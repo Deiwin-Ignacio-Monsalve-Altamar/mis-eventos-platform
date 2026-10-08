@@ -1,16 +1,16 @@
 from flask import Flask
 
+from app.api.health.routes import health_bp
+from app.config import Config
+from app.extensions import db
+
 
 def create_app() -> Flask:
     app = Flask(__name__)
+    app.config.from_object(Config)
 
-    @app.get("/health")
-    def health():
-        return {"status": "ok"}
+    db.init_app(app)
+
+    app.register_blueprint(health_bp, url_prefix="/api/v1")
 
     return app
-
-
-if __name__ == "__main__":
-    app = create_app()
-    app.run(host="0.0.0.0", port=5000)
