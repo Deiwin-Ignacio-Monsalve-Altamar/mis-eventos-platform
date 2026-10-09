@@ -4,9 +4,15 @@ DATABASE_URL = os.getenv(
     "DATABASE_URL",
     "postgresql+psycopg://mis_eventos:mis_eventos_dev@localhost:5432/mis_eventos",
 )
+JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY")
+JWT_ACCESS_TOKEN_TTL_SECONDS = int(os.getenv("JWT_ACCESS_TOKEN_TTL_SECONDS", "3600"))
+JWT_COOKIE_SECURE = os.getenv("JWT_COOKIE_SECURE", "false").lower() == "true"
 
 
 class Config:
     DATABASE_URL = DATABASE_URL
     SQLALCHEMY_DATABASE_URI = DATABASE_URL
     SQLALCHEMY_TRACK_MODIFICATIONS = False
+    JWT_SECRET_KEY = JWT_SECRET_KEY
+    JWT_ACCESS_TOKEN_TTL_SECONDS = JWT_ACCESS_TOKEN_TTL_SECONDS
+    JWT_COOKIE_SECURE = JWT_COOKIE_SECURE
