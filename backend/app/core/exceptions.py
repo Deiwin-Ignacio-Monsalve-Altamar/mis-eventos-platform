@@ -8,3 +8,15 @@ class NotFoundError(Exception):
 
 class AuthenticationError(Exception):
     """Raised when authentication fails."""
+
+
+class ValidationError(BusinessRuleError):
+    """Raised when submitted account data fails validation."""
+
+
+class DuplicateAccountError(BusinessRuleError):
+    """Raised when an account already exists for the submitted email."""
+
+
+class TokenConfigurationError(RuntimeError):
+    """Raised when the server lacks a valid secret for signing access tokens."""
