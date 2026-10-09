@@ -1,16 +1,29 @@
-# React + Vite
+# Mis Eventos frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+The frontend uses React 19, Vite, React Router, and React Context with a reducer for shared authentication and event state. API requests are centralized in `src/api/client.js`; authentication relies on the backend's HttpOnly cookie and never stores credentials or tokens in browser storage.
 
-Currently, two official plugins are available:
+## Development
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+The API base defaults to `/api/v1`, which keeps browser requests on the Vite origin and routes them through the development proxy. Copy `.env.example` to `.env` to customize local settings. `VITE_API_BASE_URL` is exposed to browser code and must not contain secrets. `API_PROXY_TARGET` is server-side Vite configuration; its local default is `http://localhost:5000`.
 
-## React Compiler
+Run the frontend directly with:
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+```bash
+npm install
+npm run dev
+```
 
-## Expanding the ESLint configuration
+When using the repository's Docker Compose setup, Vite proxies API traffic to `http://backend:5000` using the Compose service name. The application is available at `http://localhost:5173`.
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+## Routes
+
+| Route | Purpose |
+| --- | --- |
+| `/events` | Browse events |
+| `/events/:eventId` | View event details |
+| `/events/new` | Create an event |
+| `/login` | Sign in |
+| `/register` | Create an account |
+| `/profile` | View the authenticated profile |
+
+Run `npm run lint` and `npm run build` to check the frontend.
