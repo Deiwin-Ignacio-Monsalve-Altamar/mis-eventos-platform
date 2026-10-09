@@ -31,11 +31,11 @@ function ApplicationRoutes() {
         <NavLink className="brand" to="/events">
           Mis Eventos
         </NavLink>
-        <nav aria-label="Main navigation" className="main-navigation">
-          <NavLink to="/events">Events</NavLink>
-          <NavLink to="/events/new">Create event</NavLink>
+        <nav aria-label="Navegación principal" className="main-navigation">
+          <NavLink to="/events">Eventos</NavLink>
+          <NavLink to="/events/new">Crear evento</NavLink>
           <NavLink to="/profile">
-            {auth.user ? 'Profile' : 'Sign in'}
+            {auth.user ? 'Mi perfil' : 'Iniciar sesión'}
           </NavLink>
         </nav>
       </header>
@@ -60,9 +60,9 @@ function ApplicationRoutes() {
 function NotFoundPage() {
   return (
     <section className="content-panel">
-      <h1>Page not found</h1>
-      <p>The requested page does not exist.</p>
-      <NavLink to="/events">Browse events</NavLink>
+      <h1>Página no encontrada</h1>
+      <p>La página solicitada no existe.</p>
+      <NavLink to="/events">Explorar eventos</NavLink>
     </section>
   )
 }
