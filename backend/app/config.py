@@ -1,6 +1,5 @@
 import os
 
-
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
     "postgresql+psycopg://mis_eventos:mis_eventos_dev@localhost:5432/mis_eventos",

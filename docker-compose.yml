@@ -7,6 +7,11 @@ services:
       POSTGRES_DB: mis_eventos
       POSTGRES_USER: mis_eventos
       POSTGRES_PASSWORD: mis_eventos_dev
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
     ports:
       - "5432:5432"
     volumes:
@@ -22,7 +27,8 @@ services:
     ports:
       - "5000:5000"
     depends_on:
-      - db
+      db:
+        condition: service_healthy
 
   frontend:
     build:
