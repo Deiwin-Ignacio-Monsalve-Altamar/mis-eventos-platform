@@ -10,17 +10,22 @@ from app.api.auth import decorators
 from app.api.events import routes as event_routes
 from app.api.events.routes import event_bp
 from app.application.dto.event_page import EventPage
+from app.application.dto.event_registration_page import EventRegistrationPage
 from app.core.exceptions import (
     AuthenticationError,
     ConcurrencyConflictError,
     DuplicateRegistrationError,
     EventCapacityExceededError,
+    EventUnavailableError,
     NotFoundError,
     RelatedRecordsError,
     ValidationError,
 )
 from app.domain.entities.event_record import EventRecord
-from app.domain.entities.event_registration import EventRegistrationRecord
+from app.domain.entities.event_registration import (
+    EventRegistrationDetails,
+    EventRegistrationRecord,
+)
 from app.domain.entities.user_account import UserAccount
 
 TEST_TOKEN = "test-access-token"
@@ -303,6 +308,124 @@ def test_event_registration_maps_capacity_and_duplicate_conflicts(event_client):
     assert full.json["error"]["code"] == "capacity_exceeded"
     assert duplicate.status_code == 409
     assert duplicate.json["error"]["code"] == "duplicate_registration"
+
+
+def test_event_registration_maps_unavailable_event_to_conflict(event_client):
+    """Return a stable conflict response when a registration window is closed."""
+    client, event_service, _ = event_client
+    add_valid_access_cookie(client)
+    event_service.registration_service.register.side_effect = EventUnavailableError(
+        "The event is not open for new registrations."
+    )
+
+    response = client.post("/api/v1/events/12/registrations/me")
+
+    assert response.status_code == 409
+    assert response.json["error"] == {
+        "code": "event_unavailable",
+        "message": "The event is not open for new registrations.",
+    }
+
+
+def test_list_my_registrations_returns_owned_active_and_cancelled_events(event_client):
+    """Serialize the current user's registrations with their event details."""
+    client, event_service, _ = event_client
+    registration_service = event_service.registration_service
+    add_valid_access_cookie(client)
+    registration_service.list_for_user.return_value = EventRegistrationPage(
+        registrations=(
+            EventRegistrationDetails(
+                id=31,
+                status="registered",
+                registered_at=datetime(2030, 1, 1, 8, tzinfo=UTC),
+                event=EVENT,
+            ),
+            EventRegistrationDetails(
+                id=32,
+                status="cancelled",
+                registered_at=datetime(2030, 1, 2, 8, tzinfo=UTC),
+                event=EVENT,
+            ),
+        ),
+        page=1,
+        page_size=20,
+        total=2,
+    )
+
+    response = client.get("/api/v1/registrations/me")
+
+    assert response.status_code == 200
+    assert [item["status"] for item in response.json["registrations"]] == [
+        "registered",
+        "cancelled",
+    ]
+    assert all(
+        item["event"]["id"] == EVENT.id for item in response.json["registrations"]
+    )
+    assert response.json["pagination"] == {
+        "page": 1,
+        "page_size": 20,
+        "total": 2,
+        "total_pages": 1,
+    }
+    registration_service.list_for_user.assert_called_once_with(
+        ACCOUNT.id, page=None, page_size=None
+    )
+    registration_service.register.assert_not_called()
+    registration_service.cancel.assert_not_called()
+
+
+def test_list_my_registrations_returns_empty_page(event_client):
+    """Return HTTP 200 and an empty list when the authenticated user has no records."""
+    client, event_service, _ = event_client
+    add_valid_access_cookie(client)
+    event_service.registration_service.list_for_user.return_value = (
+        EventRegistrationPage((), page=1, page_size=20, total=0)
+    )
+
+    response = client.get("/api/v1/registrations/me")
+
+    assert response.status_code == 200
+    assert response.json["registrations"] == []
+    assert response.json["pagination"]["total"] == 0
+
+
+def test_list_my_registrations_requires_authentication(event_client):
+    """Do not query registrations until the caller has authenticated."""
+    client, event_service, auth_service = event_client
+
+    response = client.get("/api/v1/registrations/me")
+
+    assert response.status_code == 401
+    assert response.json["error"]["code"] == "authentication_required"
+    event_service.registration_service.list_for_user.assert_not_called()
+    auth_service.get_authenticated_user.assert_not_called()
+
+
+def test_list_my_registrations_rejects_arbitrary_user_id(event_client):
+    """Reject a requested user ID rather than exposing another account's data."""
+    client, event_service, _ = event_client
+    add_valid_access_cookie(client)
+
+    response = client.get("/api/v1/registrations/me?user_id=999")
+
+    assert response.status_code == 400
+    assert response.json["error"]["code"] == "invalid_request"
+    event_service.registration_service.list_for_user.assert_not_called()
+
+
+def test_list_my_registrations_validates_pagination(event_client):
+    """Map invalid registration pagination to the standard validation response."""
+    client, event_service, _ = event_client
+    add_valid_access_cookie(client)
+    event_service.registration_service.list_for_user.side_effect = ValidationError(
+        "page must be a positive integer."
+    )
+
+    response = client.get("/api/v1/registrations/me?page=invalid")
+
+    assert response.status_code == 400
+    assert response.json["error"]["code"] == "validation_error"
 
 
 def test_event_list_maps_page_and_search_results(event_client):

@@ -9,6 +9,7 @@ from app.core.exceptions import (
     ConcurrencyConflictError,
     DuplicateRegistrationError,
     EventCapacityExceededError,
+    EventUnavailableError,
     NotFoundError,
     RelatedRecordsError,
     ValidationError,
@@ -119,6 +120,47 @@ def delete_event(event_id: int):
     return "", 204
 
 
+@event_bp.get("/registrations/me")
+@token_required
+def list_my_event_registrations():
+    """Return the authenticated user's event registrations and event details."""
+    if "user_id" in request.args:
+        return error_response(
+            "invalid_request",
+            "Registrations can only be listed for the current user.",
+            400,
+        )
+    try:
+        page = get_event_registration_service().list_for_user(
+            g.current_user.id,
+            page=request.args.get("page"),
+            page_size=request.args.get("page_size"),
+        )
+    except ValidationError as error:
+        return error_response("validation_error", str(error), 400)
+
+    total_pages = (page.total + page.page_size - 1) // page.page_size
+    return jsonify(
+        {
+            "registrations": [
+                {
+                    "id": registration.id,
+                    "status": registration.status,
+                    "registered_at": registration.registered_at.isoformat(),
+                    "event": _serialize_event(registration.event),
+                }
+                for registration in page.registrations
+            ],
+            "pagination": {
+                "page": page.page,
+                "page_size": page.page_size,
+                "total": page.total,
+                "total_pages": total_pages,
+            },
+        }
+    ), 200
+
+
 @event_bp.post("/events/<int:event_id>/registrations/me")
 @token_required
 def register_for_event(event_id: int):
@@ -127,6 +169,8 @@ def register_for_event(event_id: int):
         registration = get_event_registration_service().register(
             event_id, g.current_user.id
         )
+    except EventUnavailableError as error:
+        return error_response("event_unavailable", str(error), 409)
     except EventCapacityExceededError as error:
         return error_response("capacity_exceeded", str(error), 409)
     except DuplicateRegistrationError as error:
