@@ -1,0 +1,1 @@
+"""Test infrastructure repository adapters."""

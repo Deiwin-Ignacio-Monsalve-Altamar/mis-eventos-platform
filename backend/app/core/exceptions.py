@@ -1,9 +1,16 @@
+"""Define application exceptions translated into consistent API responses."""
+
+
 class BusinessRuleError(Exception):
     """Raised when a business rule is violated."""
 
 
 class NotFoundError(Exception):
     """Raised when a requested resource does not exist."""
+
+
+class RelatedRecordsError(Exception):
+    """Raised when deleting a record would remove related project data."""
 
 
 class AuthenticationError(Exception):

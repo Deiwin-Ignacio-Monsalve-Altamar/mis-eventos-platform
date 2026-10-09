@@ -8,13 +8,14 @@ All notable changes to Mis Eventos are documented in this file.
 
 #### Added
 
-* Added authenticated `POST /api/v1/events` and `PATCH /api/v1/events/<event_id>` endpoints.
+* Added paginated `GET /api/v1/events` with text search, `GET /api/v1/events/<event_id>`, authenticated `POST /api/v1/events`, `PATCH /api/v1/events/<event_id>`, and `DELETE /api/v1/events/<event_id>` endpoints.
 * Added nullable event creator attribution and its Alembic migration.
-* Added tests for authorized operations, missing/invalid/expired tokens, validation failures, and unchanged data after rejected requests.
+* Added tests for event creation, editing, retrieval, listing, pagination, search, token rejection, validation, and deletion constraints.
 
 #### Security
 
 * Set event creator identity from the validated access token and ignored client-supplied identity fields.
+* Prevented deletion of events that still have registrations, sessions, or speakers.
 
 ### Authentication and Authorization
 
