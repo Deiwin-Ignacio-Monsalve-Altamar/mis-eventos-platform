@@ -1,0 +1,1195 @@
+
+openapi: 3.0.3
+info:
+  title: Mis Eventos API
+  version: 1.0.0
+  description: |
+    API para gestionar cuentas, eventos, sesiones y registros de asistentes.
+    Las rutas utilizan el prefijo /api/v1.
+servers:
+  - url: /api/v1
+    description: Servidor de desarrollo local
+
+tags:
+  - name: Health
+    description: Estado del servicio
+  - name: Authentication
+    description: Registro, inicio de sesión y perfil
+  - name: Events
+    description: Gestión y consulta de eventos
+  - name: Registrations
+    description: Inscripciones a eventos
+  - name: Sessions
+    description: Gestión de sesiones y asistentes
+
+components:
+  securitySchemes:
+    AccessTokenCookie:
+      type: apiKey
+      in: cookie
+      name: access_token
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              example: validation_error
+            message:
+              type: string
+              example: The request contains invalid fields.
+
+    ConcurrencyConflict:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, current_version]
+          properties:
+            code:
+              type: string
+              example: concurrency_conflict
+            message:
+              type: string
+            current_version:
+              type: integer
+              nullable: true
+              example: 2
+
+    User:
+      type: object
+      required: [id, email, first_name, last_name]
+      properties:
+        id:
+          type: integer
+          example: 7
+        email:
+          type: string
+          format: email
+          example: user@example.com
+        first_name:
+          type: string
+          example: Alex
+        last_name:
+          type: string
+          example: Rivera
+
+    Event:
+      type: object
+      required:
+        - id
+        - title
+        - description
+        - location
+        - starts_at
+        - ends_at
+        - capacity
+        - status
+        - version
+      properties:
+        id:
+          type: integer
+          example: 1
+        title:
+          type: string
+          maxLength: 200
+          example: Backend Developers Meetup
+        description:
+          type: string
+          nullable: true
+          example: A technical community event.
+        location:
+          type: string
+          nullable: true
+          maxLength: 255
+          example: Medellín
+        starts_at:
+          type: string
+          format: date-time
+          example: "2026-11-01T09:00:00+00:00"
+        ends_at:
+          type: string
+          format: date-time
+          example: "2026-11-01T11:00:00+00:00"
+        capacity:
+          type: integer
+          minimum: 1
+          example: 50
+        status:
+          type: string
+          enum: [draft, published, cancelled, completed]
+          example: published
+        version:
+          type: integer
+          example: 1
+
+    Session:
+      type: object
+      required:
+        - id
+        - event_id
+        - title
+        - description
+        - starts_at
+        - ends_at
+        - capacity
+        - speaker_ids
+        - version
+      properties:
+        id:
+          type: integer
+          example: 1
+        event_id:
+          type: integer
+          example: 1
+        title:
+          type: string
+          maxLength: 200
+          example: Introduction to Go
+        description:
+          type: string
+          nullable: true
+        starts_at:
+          type: string
+          format: date-time
+          example: "2026-11-01T09:00:00+00:00"
+        ends_at:
+          type: string
+          format: date-time
+          example: "2026-11-01T10:00:00+00:00"
+        capacity:
+          type: integer
+          minimum: 1
+          example: 20
+        speaker_ids:
+          type: array
+          items:
+            type: integer
+          example: [2]
+        version:
+          type: integer
+          example: 1
+
+    Pagination:
+      type: object
+      required: [page, page_size, total, total_pages]
+      properties:
+        page:
+          type: integer
+          example: 1
+        page_size:
+          type: integer
+          example: 20
+        total:
+          type: integer
+          example: 42
+        total_pages:
+          type: integer
+          example: 3
+
+paths:
+  /health:
+    get:
+      tags: [Health]
+      summary: Check service health
+      responses:
+        "200":
+          description: Health status returned.
+
+  /auth/register:
+    post:
+      tags: [Authentication]
+      summary: Register an account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password, first_name, last_name]
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: attendee@example.com
+                password:
+                  type: string
+                  format: password
+                  example: correct-horse-battery
+                first_name:
+                  type: string
+                  example: Alex
+                last_name:
+                  type: string
+                  example: Rivera
+      responses:
+        "201":
+          description: Account created.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: "#/components/schemas/User"
+        "400":
+          description: Invalid request or validation error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Account already exists.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /auth/login:
+    post:
+      tags: [Authentication]
+      summary: Authenticate and set the access-token cookie
+      description: |
+        The response sets an HttpOnly access_token cookie.
+        Its Secure flag depends on the application configuration.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: attendee@example.com
+                password:
+                  type: string
+                  format: password
+                  example: correct-horse-battery
+      responses:
+        "200":
+          description: Authentication succeeded; access-token cookie is set.
+          headers:
+            Set-Cookie:
+              description: HttpOnly access_token cookie.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: "#/components/schemas/User"
+        "400":
+          description: Invalid request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Invalid credentials.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: Authentication unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /auth/me:
+    get:
+      tags: [Authentication]
+      summary: Get the current user
+      security:
+        - AccessTokenCookie: []
+      responses:
+        "200":
+          description: Current user returned.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: "#/components/schemas/User"
+        "401":
+          description: Authentication required or token invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: Authentication unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /events:
+    get:
+      tags: [Events]
+      summary: List events
+      parameters:
+        - in: query
+          name: page
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000000
+            default: 1
+        - in: query
+          name: page_size
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - in: query
+          name: q
+          description: Optional search text.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 200
+      responses:
+        "200":
+          description: Events and pagination metadata.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  events:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Event"
+                  pagination:
+                    $ref: "#/components/schemas/Pagination"
+        "400":
+          description: Invalid query parameters.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+    post:
+      tags: [Events]
+      summary: Create an event
+      security:
+        - AccessTokenCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, starts_at, ends_at, capacity]
+              properties:
+                title:
+                  type: string
+                  minLength: 1
+                  maxLength: 200
+                  example: Backend Developers Meetup
+                description:
+                  type: string
+                  nullable: true
+                location:
+                  type: string
+                  nullable: true
+                  maxLength: 255
+                starts_at:
+                  type: string
+                  format: date-time
+                  description: ISO 8601 datetime with an explicit timezone.
+                  example: "2026-11-01T09:00:00+00:00"
+                ends_at:
+                  type: string
+                  format: date-time
+                  example: "2026-11-01T11:00:00+00:00"
+                capacity:
+                  type: integer
+                  minimum: 1
+                status:
+                  type: string
+                  enum: [draft, published, cancelled, completed]
+                  default: draft
+      responses:
+        "201":
+          description: Event created.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  event:
+                    $ref: "#/components/schemas/Event"
+        "400":
+          description: Invalid request or validation error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Authentication required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: Authentication unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /events/{event_id}:
+    parameters:
+      - in: path
+        name: event_id
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+    get:
+      tags: [Events]
+      summary: Get an event
+      responses:
+        "200":
+          description: Event returned.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  event:
+                    $ref: "#/components/schemas/Event"
+        "404":
+          description: Event not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+    patch:
+      tags: [Events]
+      summary: Update an event
+      description: Requires a version field for optimistic concurrency control.
+      security:
+        - AccessTokenCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [version]
+              properties:
+                title:
+                  type: string
+                  minLength: 1
+                  maxLength: 200
+                description:
+                  type: string
+                  nullable: true
+                location:
+                  type: string
+                  nullable: true
+                  maxLength: 255
+                starts_at:
+                  type: string
+                  format: date-time
+                ends_at:
+                  type: string
+                  format: date-time
+                capacity:
+                  type: integer
+                  minimum: 1
+                status:
+                  type: string
+                  enum: [draft, published, cancelled, completed]
+                version:
+                  type: integer
+                  minimum: 1
+      responses:
+        "200":
+          description: Event updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  event:
+                    $ref: "#/components/schemas/Event"
+        "400":
+          description: Invalid request or validation error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Authentication required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Event not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Concurrent update conflict.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConcurrencyConflict"
+        "503":
+          description: Authentication unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+    delete:
+      tags: [Events]
+      summary: Delete an event
+      security:
+        - AccessTokenCookie: []
+      responses:
+        "204":
+          description: Event deleted.
+        "401":
+          description: Authentication required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Event not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Event has related records.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: Authentication unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /registrations/me:
+    get:
+      tags: [Registrations]
+      summary: List the current user's event registrations
+      description: Registrations can only be listed for the authenticated user.
+      security:
+        - AccessTokenCookie: []
+      parameters:
+        - in: query
+          name: page
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - in: query
+          name: page_size
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        "200":
+          description: Registrations and pagination metadata.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  registrations:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        status:
+                          type: string
+                        registered_at:
+                          type: string
+                          format: date-time
+                        event:
+                          $ref: "#/components/schemas/Event"
+                  pagination:
+                    $ref: "#/components/schemas/Pagination"
+        "400":
+          description: Invalid query parameters or user_id is not allowed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Authentication required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: Authentication unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /events/{event_id}/registrations/me:
+    parameters:
+      - in: path
+        name: event_id
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+    post:
+      tags: [Registrations]
+      summary: Register the current user for an event
+      security:
+        - AccessTokenCookie: []
+      responses:
+        "201":
+          description: Registration created.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  registration:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      event_id:
+                        type: integer
+                      user_id:
+                        type: integer
+                      status:
+                        type: string
+        "400":
+          description: Validation error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Authentication required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Event not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Event unavailable, capacity exceeded, or duplicate registration.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: Authentication unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+    delete:
+      tags: [Registrations]
+      summary: Cancel the current user's event registration
+      security:
+        - AccessTokenCookie: []
+      responses:
+        "204":
+          description: Registration cancelled.
+        "400":
+          description: Validation error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Authentication required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Event or registration not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: Authentication unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /events/{event_id}/sessions:
+    parameters:
+      - in: path
+        name: event_id
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+    get:
+      tags: [Sessions]
+      summary: List an event's sessions
+      responses:
+        "200":
+          description: Sessions returned.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sessions:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Session"
+        "404":
+          description: Event not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+    post:
+      tags: [Sessions]
+      summary: Create a session for an event
+      security:
+        - AccessTokenCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, starts_at, ends_at, capacity]
+              properties:
+                title:
+                  type: string
+                  minLength: 1
+                  maxLength: 200
+                description:
+                  type: string
+                  nullable: true
+                starts_at:
+                  type: string
+                  format: date-time
+                ends_at:
+                  type: string
+                  format: date-time
+                capacity:
+                  type: integer
+                  minimum: 1
+                speaker_ids:
+                  type: array
+                  uniqueItems: true
+                  items:
+                    type: integer
+                    minimum: 1
+      responses:
+        "201":
+          description: Session created.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  session:
+                    $ref: "#/components/schemas/Session"
+        "400":
+          description: Invalid request or validation error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Authentication required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Event or speaker not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: Authentication unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /events/{event_id}/sessions/{session_id}:
+    parameters:
+      - in: path
+        name: event_id
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+      - in: path
+        name: session_id
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+    get:
+      tags: [Sessions]
+      summary: Get a session
+      responses:
+        "200":
+          description: Session returned.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  session:
+                    $ref: "#/components/schemas/Session"
+        "404":
+          description: Session or event not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+    patch:
+      tags: [Sessions]
+      summary: Update a session
+      description: Requires a version field for optimistic concurrency control.
+      security:
+        - AccessTokenCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [version]
+              properties:
+                title:
+                  type: string
+                  minLength: 1
+                  maxLength: 200
+                description:
+                  type: string
+                  nullable: true
+                starts_at:
+                  type: string
+                  format: date-time
+                ends_at:
+                  type: string
+                  format: date-time
+                capacity:
+                  type: integer
+                  minimum: 1
+                speaker_ids:
+                  type: array
+                  uniqueItems: true
+                  items:
+                    type: integer
+                    minimum: 1
+                version:
+                  type: integer
+                  minimum: 1
+      responses:
+        "200":
+          description: Session updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  session:
+                    $ref: "#/components/schemas/Session"
+        "400":
+          description: Invalid request or validation error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Authentication required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Session or event not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Concurrent update conflict.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConcurrencyConflict"
+        "503":
+          description: Authentication unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+    delete:
+      tags: [Sessions]
+      summary: Delete a session
+      security:
+        - AccessTokenCookie: []
+      responses:
+        "204":
+          description: Session deleted.
+        "401":
+          description: Authentication required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Session or event not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: Authentication unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /events/{event_id}/sessions/{session_id}/attendees:
+    parameters:
+      - in: path
+        name: event_id
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+      - in: path
+        name: session_id
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+    get:
+      tags: [Sessions]
+      summary: List session attendees
+      description: Restricted to the event creator.
+      security:
+        - AccessTokenCookie: []
+      responses:
+        "200":
+          description: Attendees returned.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  attendees:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        user_id:
+                          type: integer
+                        first_name:
+                          type: string
+                        last_name:
+                          type: string
+                        email:
+                          type: string
+                          format: email
+                        registered_at:
+                          type: string
+                          format: date-time
+        "401":
+          description: Authentication required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Caller is not the event creator.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Event or session not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: Authentication unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+    post:
+      tags: [Sessions]
+      summary: Register the current user for a session
+      security:
+        - AccessTokenCookie: []
+      responses:
+        "201":
+          description: Session registration activated.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Session registration is active.
+        "400":
+          description: Validation error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Authentication required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Event or session not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Capacity exceeded or duplicate registration.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: Authentication unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /events/{event_id}/sessions/{session_id}/capacity:
+    parameters:
+      - in: path
+        name: event_id
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+      - in: path
+        name: session_id
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+    get:
+      tags: [Sessions]
+      summary: Get session capacity
+      responses:
+        "200":
+          description: Capacity information returned.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  capacity:
+                    type: integer
+                  occupied:
+                    type: integer
+                  available:
+                    type: integer
+        "404":
+          description: Event or session not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /events/{event_id}/sessions/{session_id}/attendees/me:
+    parameters:
+      - in: path
+        name: event_id
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+      - in: path
+        name: session_id
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+    delete:
+      tags: [Sessions]
+      summary: Cancel the current user's session registration
+      security:
+        - AccessTokenCookie: []
+      responses:
+        "204":
+          description: Session registration cancelled.
+        "401":
+          description: Authentication required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Event, session, or registration not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: Authentication unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"

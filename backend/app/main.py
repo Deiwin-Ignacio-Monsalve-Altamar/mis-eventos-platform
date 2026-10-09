@@ -7,6 +7,7 @@ from app.api.events.routes import event_bp
 from app.api.health.routes import health_bp
 from app.api.sessions.routes import session_bp
 from app.config import Config
+from app.docs.swagger import init_swagger
 from app.extensions import db
 
 
@@ -20,5 +21,7 @@ def create_app() -> Flask:
     app.register_blueprint(auth_bp, url_prefix="/api/v1/auth")
     app.register_blueprint(event_bp, url_prefix="/api/v1")
     app.register_blueprint(session_bp, url_prefix="/api/v1")
+
+    init_swagger(app)
 
     return app
