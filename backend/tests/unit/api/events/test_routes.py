@@ -104,6 +104,10 @@ def test_create_event_rejects_non_object_json_without_calling_service(event_clie
     response = client.post("/api/v1/events", json=["invalid"])
 
     assert response.status_code == 400
+    assert response.json["error"] == {
+        "code": "invalid_request",
+        "message": "A JSON object is required.",
+    }
     event_service.create.assert_not_called()
 
 
@@ -119,8 +123,65 @@ def test_create_and_update_map_service_validation_errors(event_client):
 
     assert create_response.status_code == 400
     assert update_response.status_code == 400
-    assert create_response.json["error"]["code"] == "validation_error"
-    assert update_response.json["error"]["code"] == "validation_error"
+    assert create_response.json["error"] == {
+        "code": "validation_error",
+        "message": "Invalid capacity.",
+    }
+    assert update_response.json["error"] == {
+        "code": "validation_error",
+        "message": "Invalid date range.",
+    }
+
+
+@pytest.mark.parametrize("method", ["post", "patch"])
+def test_event_writes_require_authentication(event_client, method):
+    """Reject event creation and editing without a cookie before service calls."""
+    client, event_service, auth_service = event_client
+    request = getattr(client, method)
+    path = "/api/v1/events" if method == "post" else "/api/v1/events/12"
+    kwargs = (
+        {"json": valid_event_payload()}
+        if method == "post"
+        else {"json": {"title": "Updated"}}
+    )
+
+    response = request(path, **kwargs)
+
+    assert response.status_code == 401
+    assert response.json["error"] == {
+        "code": "authentication_required",
+        "message": "Authentication is required.",
+    }
+    event_service.create.assert_not_called()
+    event_service.update.assert_not_called()
+    auth_service.get_authenticated_user.assert_not_called()
+
+
+@pytest.mark.parametrize("method", ["post", "patch"])
+def test_event_writes_reject_invalid_tokens(event_client, method):
+    """Reject invalid credentials for both event creation and editing."""
+    client, event_service, auth_service = event_client
+    auth_service.get_authenticated_user.side_effect = AuthenticationError(
+        "Invalid token."
+    )
+    add_valid_access_cookie(client)
+    request = getattr(client, method)
+    path = "/api/v1/events" if method == "post" else "/api/v1/events/12"
+    kwargs = (
+        {"json": valid_event_payload()}
+        if method == "post"
+        else {"json": {"title": "Updated"}}
+    )
+
+    response = request(path, **kwargs)
+
+    assert response.status_code == 401
+    assert response.json["error"] == {
+        "code": "invalid_token",
+        "message": "Authentication is required.",
+    }
+    event_service.create.assert_not_called()
+    event_service.update.assert_not_called()
 
 
 def test_update_event_calls_service_and_returns_event(event_client):
@@ -168,7 +229,10 @@ def test_event_list_maps_service_validation_error(event_client):
     response = client.get("/api/v1/events?page_size=invalid")
 
     assert response.status_code == 400
-    assert response.json["error"]["code"] == "validation_error"
+    assert response.json["error"] == {
+        "code": "validation_error",
+        "message": "Invalid page size.",
+    }
 
 
 def test_get_event_returns_service_result(event_client):
@@ -190,7 +254,10 @@ def test_get_event_maps_missing_event_to_not_found(event_client):
     response = client.get("/api/v1/events/999")
 
     assert response.status_code == 404
-    assert response.json["error"]["code"] == "not_found"
+    assert response.json["error"] == {
+        "code": "not_found",
+        "message": "Event not found.",
+    }
 
 
 def test_event_deletion_requires_authentication(event_client):
@@ -200,6 +267,10 @@ def test_event_deletion_requires_authentication(event_client):
     response = client.delete("/api/v1/events/12")
 
     assert response.status_code == 401
+    assert response.json["error"] == {
+        "code": "authentication_required",
+        "message": "Authentication is required.",
+    }
     event_service.delete.assert_not_called()
     auth_service.get_authenticated_user.assert_not_called()
 
@@ -215,6 +286,10 @@ def test_event_deletion_rejects_invalid_token(event_client):
     response = client.delete("/api/v1/events/12")
 
     assert response.status_code == 401
+    assert response.json["error"] == {
+        "code": "invalid_token",
+        "message": "Authentication is required.",
+    }
     event_service.delete.assert_not_called()
 
 
@@ -241,7 +316,10 @@ def test_event_deletion_maps_related_record_conflict(event_client):
     response = client.delete("/api/v1/events/12")
 
     assert response.status_code == 409
-    assert response.json["error"]["code"] == "related_records"
+    assert response.json["error"] == {
+        "code": "related_records",
+        "message": "Events with registrations cannot be deleted.",
+    }
 
 
 def test_event_deletion_maps_missing_event_to_not_found(event_client):
@@ -253,4 +331,7 @@ def test_event_deletion_maps_missing_event_to_not_found(event_client):
     response = client.delete("/api/v1/events/999")
 
     assert response.status_code == 404
-    assert response.json["error"]["code"] == "not_found"
+    assert response.json["error"] == {
+        "code": "not_found",
+        "message": "Event not found.",
+    }

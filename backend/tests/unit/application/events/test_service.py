@@ -22,6 +22,7 @@ EVENT = EventRecord(
     status="draft",
     created_by_id=7,
 )
+MISSING_FIELD = object()
 
 
 @pytest.fixture
@@ -61,13 +62,93 @@ def test_create_event_validates_and_persists_authenticated_creator(event_service
 
 
 def test_create_event_validation_error_does_not_call_repository(event_service):
-    """Reject invalid event values before writing through the repository."""
+    """Reject invalid event values before accessing the repository."""
     service, repository = event_service
 
     with pytest.raises(ValidationError):
         service.create(valid_event_values(capacity=0), creator_id=7)
 
     repository.save.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"starts_at": MISSING_FIELD},
+        {"starts_at": None},
+        {"starts_at": "not-a-date"},
+        {"starts_at": "2030-01-01T10:00:00"},
+        {"ends_at": MISSING_FIELD},
+        {"ends_at": None},
+        {"ends_at": "not-a-date"},
+        {"ends_at": "2030-01-01T12:00:00"},
+        {"ends_at": "2030-01-01T10:00:00+00:00"},
+        {"ends_at": "2029-12-31T12:00:00+00:00"},
+        {"title": MISSING_FIELD},
+        {"title": None},
+        {"title": "  "},
+        {"capacity": MISSING_FIELD},
+        {"capacity": None},
+        {"status": "archived"},
+    ],
+    ids=[
+        "missing-start",
+        "null-start",
+        "invalid-start",
+        "naive-start",
+        "missing-end",
+        "null-end",
+        "invalid-end",
+        "naive-end",
+        "equal-dates",
+        "end-before-start",
+        "missing-title",
+        "null-title",
+        "blank-title",
+        "missing-capacity",
+        "null-capacity",
+        "unknown-status",
+    ],
+)
+def test_create_rejects_invalid_required_fields_without_repository_access(
+    event_service, overrides
+):
+    """Reject missing or invalid fields before invoking any repository method."""
+    service, repository = event_service
+    values = valid_event_values()
+    for field_name, value in overrides.items():
+        if value is MISSING_FIELD:
+            values.pop(field_name)
+        else:
+            values[field_name] = value
+
+    with pytest.raises(ValidationError):
+        service.create(values, creator_id=7)
+
+    repository.find_by_id.assert_not_called()
+    repository.list_events.assert_not_called()
+    repository.save.assert_not_called()
+    repository.delete.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "capacity",
+    [0, -1, True, False, 100.5, "100"],
+    ids=["zero", "negative", "true", "false", "non-integer-number", "string"],
+)
+def test_create_rejects_non_positive_or_non_integer_capacity_without_saving(
+    event_service, capacity
+):
+    """Reject capacities that are not positive integers before repository writes."""
+    service, repository = event_service
+
+    with pytest.raises(ValidationError, match="positive integer"):
+        service.create(valid_event_values(capacity=capacity), creator_id=7)
+
+    repository.find_by_id.assert_not_called()
+    repository.list_events.assert_not_called()
+    repository.save.assert_not_called()
+    repository.delete.assert_not_called()
 
 
 def test_update_event_merges_fields_and_preserves_creator(event_service):
