@@ -4,6 +4,11 @@ All notable changes to Mis Eventos are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+* Documented backend API endpoints with OpenAPI 3.0.3 and enabled interactive Swagger UI for local development.
+
+
 ### Session Management
 
 #### Added
