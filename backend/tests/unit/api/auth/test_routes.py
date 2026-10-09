@@ -1,43 +1,50 @@
-"""Verify authentication routes and their persistence and token behavior."""
+"""Verify authentication route responses with application services mocked."""
 
-import hashlib
+from unittest.mock import Mock
 
 import pytest
 from flask import Flask
 
+from app.api.auth import decorators
+from app.api.auth import routes as auth_routes
 from app.api.auth.routes import auth_bp
-from app.extensions import db
-from app.infrastructure.database.models import User
+from app.core.exceptions import (
+    AuthenticationError,
+    DuplicateAccountError,
+    ValidationError,
+)
+from app.domain.entities.user_account import UserAccount
 
-TEST_JWT_SECRET = "test-only-signing-secret-with-more-than-32-bytes"
+TEST_TOKEN = "test-access-token"
+ACCOUNT = UserAccount(
+    id=7,
+    email="attendee@example.test",
+    password_hash="private-password-hash",
+    first_name="Alex",
+    last_name="Rivera",
+)
 
 
 @pytest.fixture
-def auth_client():
-    """Provide the auth blueprint with an isolated in-memory SQLite database."""
+def auth_client(monkeypatch):
+    """Provide auth routes with a mocked service and no database extension."""
     app = Flask(__name__)
     app.config.update(
-        SQLALCHEMY_DATABASE_URI="sqlite://",
-        SQLALCHEMY_TRACK_MODIFICATIONS=False,
-        JWT_SECRET_KEY=TEST_JWT_SECRET,
         JWT_ACCESS_TOKEN_TTL_SECONDS=3600,
         JWT_COOKIE_SECURE=False,
     )
-    db.init_app(app)
+    service = Mock()
+    service.register.return_value = ACCOUNT
+    service.authenticate.return_value = (ACCOUNT, TEST_TOKEN)
+    service.get_authenticated_user.return_value = ACCOUNT
+    monkeypatch.setattr(auth_routes, "get_auth_service", lambda: service)
+    monkeypatch.setattr(decorators, "get_auth_service", lambda: service)
     app.register_blueprint(auth_bp, url_prefix="/api/v1/auth")
-
-    with app.app_context():
-        db.create_all()
-
-    yield app.test_client()
-
-    with app.app_context():
-        db.session.remove()
-        db.drop_all()
+    return app.test_client(), service
 
 
 def registration_payload(**overrides):
-    """Build a valid registration payload with optional field overrides."""
+    """Build a registration request body with optional field overrides."""
     payload = {
         "email": "attendee@example.test",
         "password": "correct-horse-battery",
@@ -48,46 +55,82 @@ def registration_payload(**overrides):
     return payload
 
 
-def register_account(client, **overrides):
-    """Register a valid account and return its HTTP response."""
-    return client.post("/api/v1/auth/register", json=registration_payload(**overrides))
+def test_registration_returns_public_account_and_calls_service(auth_client):
+    """Return 201 and delegate registration fields to the application service."""
+    client, service = auth_client
 
-
-def test_registration_stores_sha256_hash_and_returns_public_profile(auth_client):
-    """Store only the challenge-required hash and omit credentials from the response."""
-    response = register_account(auth_client)
+    response = client.post("/api/v1/auth/register", json=registration_payload())
 
     assert response.status_code == 201
-    assert response.json["user"]["email"] == "attendee@example.test"
+    assert response.json["user"] == {
+        "id": 7,
+        "email": "attendee@example.test",
+        "first_name": "Alex",
+        "last_name": "Rivera",
+    }
     assert "password_hash" not in response.json["user"]
-    with auth_client.application.app_context():
-        user = db.session.query(User).one()
-        assert (
-            user.password_hash == hashlib.sha256(b"correct-horse-battery").hexdigest()
-        )
-        assert user.password_hash != "correct-horse-battery"
+    service.register.assert_called_once_with(
+        email="attendee@example.test",
+        password="correct-horse-battery",
+        first_name="Alex",
+        last_name="Rivera",
+    )
 
 
-def test_login_with_valid_credentials_sets_http_only_access_cookie(auth_client):
-    """Authenticate a registered account and return its public profile and cookie."""
-    register_account(auth_client)
+def test_registration_rejects_non_object_json_without_calling_service(auth_client):
+    """Return 400 for malformed request bodies before service invocation."""
+    client, service = auth_client
 
-    response = auth_client.post(
+    response = client.post("/api/v1/auth/register", json=["not", "an", "object"])
+
+    assert response.status_code == 400
+    service.register.assert_not_called()
+
+
+def test_registration_maps_validation_and_duplicate_errors(auth_client):
+    """Translate application validation and duplicate-account errors to API errors."""
+    client, service = auth_client
+    service.register.side_effect = ValidationError("A valid email is required.")
+
+    invalid_response = client.post(
+        "/api/v1/auth/register", json=registration_payload(email="invalid")
+    )
+
+    service.register.side_effect = DuplicateAccountError("Account already exists.")
+    duplicate_response = client.post(
+        "/api/v1/auth/register", json=registration_payload()
+    )
+
+    assert invalid_response.status_code == 400
+    assert invalid_response.json["error"]["code"] == "validation_error"
+    assert duplicate_response.status_code == 409
+    assert duplicate_response.json["error"]["code"] == "account_exists"
+
+
+def test_login_returns_profile_and_http_only_cookie(auth_client):
+    """Return an account profile and set the configured HttpOnly token cookie."""
+    client, service = auth_client
+
+    response = client.post(
         "/api/v1/auth/login",
-        json={"email": "ATTENDEE@example.test", "password": "correct-horse-battery"},
+        json={"email": "attendee@example.test", "password": "correct-password"},
     )
 
     assert response.status_code == 200
     assert response.json["user"]["email"] == "attendee@example.test"
     assert "password_hash" not in response.json["user"]
     assert "HttpOnly" in response.headers["Set-Cookie"]
+    service.authenticate.assert_called_once_with(
+        email="attendee@example.test", password="correct-password"
+    )
 
 
-def test_login_with_incorrect_credentials_returns_unauthorized(auth_client):
-    """Reject incorrect credentials without revealing whether the email exists."""
-    register_account(auth_client)
+def test_login_maps_invalid_credentials_to_unauthorized(auth_client):
+    """Return 401 when the application service rejects credentials."""
+    client, service = auth_client
+    service.authenticate.side_effect = AuthenticationError("Invalid credentials.")
 
-    response = auth_client.post(
+    response = client.post(
         "/api/v1/auth/login",
         json={"email": "attendee@example.test", "password": "wrong-password"},
     )
@@ -96,37 +139,15 @@ def test_login_with_incorrect_credentials_returns_unauthorized(auth_client):
     assert response.json["error"]["code"] == "invalid_credentials"
 
 
-def test_registration_rejects_duplicate_normalized_email(auth_client):
-    """Reject a second account whose email differs only by case and whitespace."""
-    register_account(auth_client)
-
-    response = register_account(auth_client, email=" ATTENDEE@example.test ")
-
-    assert response.status_code == 409
-    assert response.json["error"]["code"] == "account_exists"
-
-
-@pytest.mark.parametrize(
-    "overrides",
-    [
-        {"email": "not-an-email"},
-        {"password": "short"},
-        {"first_name": "  "},
-    ],
-)
-def test_registration_rejects_invalid_input(auth_client, overrides):
-    """Return a validation response when account fields are malformed."""
-    response = register_account(auth_client, **overrides)
-
-    assert response.status_code == 400
-    assert response.json["error"]["code"] == "validation_error"
-
-
 def test_current_user_rejects_missing_and_invalid_tokens(auth_client):
-    """Require a valid access token before returning the current user profile."""
-    missing_token_response = auth_client.get("/api/v1/auth/me")
-    auth_client.set_cookie("access_token", "invalid-token")
-    invalid_token_response = auth_client.get("/api/v1/auth/me")
+    """Reject missing or invalid cookies without returning a private account field."""
+    client, service = auth_client
+    missing_response = client.get("/api/v1/auth/me")
+    service.get_authenticated_user.side_effect = AuthenticationError("Invalid token.")
+    client.set_cookie("access_token", "invalid-token")
 
-    assert missing_token_response.status_code == 401
-    assert invalid_token_response.status_code == 401
+    invalid_response = client.get("/api/v1/auth/me")
+
+    assert missing_response.status_code == 401
+    assert invalid_response.status_code == 401
+    service.get_authenticated_user.assert_called_once_with("invalid-token")

@@ -5,11 +5,48 @@ from flask import Blueprint, g, jsonify, request
 from app.api.auth.decorators import token_required
 from app.api.responses import error_response
 from app.application.events.service import EDITABLE_FIELDS
-from app.core.exceptions import NotFoundError, ValidationError
+from app.core.exceptions import NotFoundError, RelatedRecordsError, ValidationError
 from app.dependencies import get_event_service
 from app.domain.entities.event_record import EventRecord
 
 event_bp = Blueprint("events", __name__)
+
+
+@event_bp.get("/events")
+def list_events():
+    """Return a paginated event list, optionally filtered by a text query."""
+    try:
+        page = get_event_service().list_events(
+            page=request.args.get("page"),
+            page_size=request.args.get("page_size"),
+            search_query=request.args.get("q"),
+        )
+    except ValidationError as error:
+        return error_response("validation_error", str(error), 400)
+
+    total_pages = (page.total + page.page_size - 1) // page.page_size
+    return jsonify(
+        {
+            "events": [_serialize_event(event) for event in page.events],
+            "pagination": {
+                "page": page.page,
+                "page_size": page.page_size,
+                "total": page.total,
+                "total_pages": total_pages,
+            },
+        }
+    ), 200
+
+
+@event_bp.get("/events/<int:event_id>")
+def get_event(event_id: int):
+    """Return a single event or a standard not-found response."""
+    try:
+        event = get_event_service().get_by_id(event_id)
+    except NotFoundError as error:
+        return error_response("not_found", str(error), 404)
+
+    return jsonify({"event": _serialize_event(event)}), 200
 
 
 @event_bp.post("/events")
@@ -46,6 +83,20 @@ def update_event(event_id: int):
         return error_response("not_found", str(error), 404)
 
     return jsonify({"event": _serialize_event(event)}), 200
+
+
+@event_bp.delete("/events/<int:event_id>")
+@token_required
+def delete_event(event_id: int):
+    """Delete an event when it has no registrations or other related records."""
+    try:
+        get_event_service().delete(event_id)
+    except NotFoundError as error:
+        return error_response("not_found", str(error), 404)
+    except RelatedRecordsError as error:
+        return error_response("related_records", str(error), 409)
+
+    return "", 204
 
 
 def _editable_values(request_data: dict[str, object]) -> dict[str, object]:
