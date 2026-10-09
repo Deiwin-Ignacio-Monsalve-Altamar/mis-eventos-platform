@@ -38,6 +38,8 @@ services:
       context: ./frontend
     container_name: mis-eventos-frontend
     restart: unless-stopped
+    environment:
+      API_PROXY_TARGET: http://backend:5000
     ports:
       - "5173:5173"
     depends_on:
