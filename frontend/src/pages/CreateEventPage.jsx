@@ -40,62 +40,62 @@ export default function CreateEventPage() {
   }
 
   if (state.auth.status === 'loading') {
-    return <p aria-live="polite">Checking your sign-in status…</p>
+    return <p aria-live="polite">Estamos verificando tu sesión…</p>
   }
   if (state.auth.status !== 'authenticated') {
     return (
       <section className="content-panel">
-        <h1>Sign in to create an event</h1>
-        <p>Event creation is available to authenticated users.</p>
+        <h1>Inicia sesión para crear un evento</h1>
+        <p>La creación de eventos está disponible para cuentas autenticadas.</p>
         {state.auth.status === 'error' && <ErrorMessage error={state.auth.error} />}
-        <Link className="button button-primary" to="/login">Sign in</Link>
+        <Link className="button button-primary" to="/login">Iniciar sesión</Link>
       </section>
     )
   }
 
   return (
     <section className="form-panel">
-      <p className="eyebrow">Share something worth attending</p>
-      <h1>Create event</h1>
+      <p className="eyebrow">Comparte algo que valga la pena vivir</p>
+      <h1>Crear evento</h1>
       <ErrorMessage error={formError || state.eventCreation.error} />
       <form className="app-form" onSubmit={handleSubmit}>
         <label>
-          Event title
+          Nombre del evento
           <input autoComplete="off" maxLength="200" name="title" required />
         </label>
         <label>
-          Description
+          Descripción
           <textarea name="description" rows="4" />
         </label>
         <label>
-          Location
+          Lugar
           <input maxLength="255" name="location" />
         </label>
         <div className="form-columns">
           <label>
-            Starts at
+            Fecha y hora de inicio
             <input name="starts_at" required type="datetime-local" />
           </label>
           <label>
-            Ends at
+            Fecha y hora de finalización
             <input name="ends_at" required type="datetime-local" />
           </label>
         </div>
         <div className="form-columns">
           <label>
-            Capacity
+            Capacidad
             <input min="1" name="capacity" required type="number" />
           </label>
           <label>
-            Status
+            Estado
             <select defaultValue="draft" name="status">
-              <option value="draft">Draft</option>
-              <option value="published">Published</option>
+              <option value="draft">Borrador</option>
+              <option value="published">Publicado</option>
             </select>
           </label>
         </div>
         <button className="button button-primary" disabled={submitting} type="submit">
-          {submitting ? 'Creating…' : 'Create event'}
+          {submitting ? 'Creando…' : 'Crear evento'}
         </button>
       </form>
     </section>
@@ -106,7 +106,7 @@ export default function CreateEventPage() {
 function toUtc(value) {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) {
-    throw new Error('Enter a valid date and time.')
+    throw new Error('Ingresa una fecha y hora válidas.')
   }
   return date.toISOString()
 }

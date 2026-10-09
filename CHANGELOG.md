@@ -7,6 +7,13 @@ All notable changes to Mis Eventos are documented in this file.
 ### Added
 
 * Documented backend API endpoints with OpenAPI 3.0.3 and enabled interactive Swagger UI for local development.
+* Added a shared festive frontend visual system with purple, pink, yellow, lavender, and turquoise accents across events, authentication, profile, and forms.
+* Added accessible session availability labels for available, full, pending, and unknown capacity states.
+
+### Changed
+
+* Updated shared buttons, navigation, form controls, cards, feedback, and responsive styling while preserving existing frontend routes and API behavior.
+* Documented frontend design tokens, accessibility, responsive conventions, and mocked test practices.
 
 
 ### Session Management

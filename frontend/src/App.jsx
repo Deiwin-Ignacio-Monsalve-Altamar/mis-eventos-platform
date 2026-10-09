@@ -1,14 +1,16 @@
 /** Define the application shell and the public route table. */
 
-import { Navigate, NavLink, Route, Routes } from 'react-router-dom'
+import { Link, Route, Routes, useLocation } from 'react-router-dom'
 import { AppProvider } from './state/AppState.jsx'
 import useAppState from './state/useAppState.js'
+import AppHeader from './components/AppHeader.jsx'
 import CreateEventPage from './pages/CreateEventPage.jsx'
 import EventDetailsPage from './pages/EventDetailsPage.jsx'
 import EventListPage from './pages/EventListPage.jsx'
 import LoginPage from './pages/LoginPage.jsx'
 import ProfilePage from './pages/ProfilePage.jsx'
 import RegisterPage from './pages/RegisterPage.jsx'
+import SiteFooter from './components/SiteFooter.jsx'
 import './App.css'
 
 /** Render the application provider, shell, and page routes. */
@@ -24,25 +26,16 @@ function App() {
 function ApplicationRoutes() {
   const { state } = useAppState()
   const { auth } = state
+  const { pathname } = useLocation()
+  const isAuthenticationPage = pathname === '/login' || pathname === '/register'
 
   return (
-    <div className="app-shell">
-      <header className="site-header">
-        <NavLink className="brand" to="/events">
-          Mis Eventos
-        </NavLink>
-        <nav aria-label="Navegación principal" className="main-navigation">
-          <NavLink to="/events">Eventos</NavLink>
-          <NavLink to="/events/new">Crear evento</NavLink>
-          <NavLink to="/profile">
-            {auth.user ? 'Mi perfil' : 'Iniciar sesión'}
-          </NavLink>
-        </nav>
-      </header>
+    <div className={`app-shell${isAuthenticationPage ? ' app-shell-auth' : ''}`}>
+      {!isAuthenticationPage && <AppHeader auth={auth} />}
 
       <main className="page-container">
         <Routes>
-          <Route element={<Navigate replace to="/events" />} path="/" />
+          <Route element={<EventListPage />} path="/" />
           <Route element={<EventListPage />} path="/events" />
           <Route element={<CreateEventPage />} path="/events/new" />
           <Route element={<EventDetailsPage />} path="/events/:eventId" />
@@ -52,6 +45,7 @@ function ApplicationRoutes() {
           <Route element={<NotFoundPage />} path="*" />
         </Routes>
       </main>
+      {!isAuthenticationPage && <SiteFooter auth={auth} />}
     </div>
   )
 }
@@ -62,7 +56,7 @@ function NotFoundPage() {
     <section className="content-panel">
       <h1>Página no encontrada</h1>
       <p>La página solicitada no existe.</p>
-      <NavLink to="/events">Explorar eventos</NavLink>
+      <Link to="/events">Explorar eventos</Link>
     </section>
   )
 }

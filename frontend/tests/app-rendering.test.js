@@ -16,13 +16,16 @@ test('application provider renders every required route without a blank screen',
 
   try {
     const { default: App } = await vite.ssrLoadModule('/src/App.jsx')
+    const { default: AppHeader } = await vite.ssrLoadModule('/src/components/AppHeader.jsx')
     const routes = [
+      ['/', 'Planes con otra energía'],
       ['/events', 'Eventos'],
-      ['/events/42', 'Select an event to see its details.'],
-      ['/events/new', 'Checking your sign-in status…'],
+      ['/events/42', 'Estamos cargando el evento…'],
+      ['/events/new', 'Estamos verificando tu sesión…'],
       ['/login', '¡Qué bueno verte!'],
       ['/register', 'Crea tu cuenta'],
       ['/profile', 'Estamos cargando tu perfil…'],
+      ['/route-that-does-not-exist', 'Página no encontrada'],
     ]
 
     for (const [location, expectedContent] of routes) {
@@ -34,7 +37,30 @@ test('application provider renders every required route without a blank screen',
         ),
       )
       assert.ok(html.includes(expectedContent), `Route ${location} did not render.`)
+      if (location === '/') {
+        assert.ok(html.includes('href="/events"'), 'The home route must show event navigation.')
+        assert.ok(html.includes('href="/login"'), 'The signed-out header must link to login.')
+        assert.ok(html.includes('href="/register"'), 'The signed-out header must link to registration.')
+        assert.ok(html.includes('href="/events/new"'), 'The header must link to event creation.')
+        assert.ok(!html.includes('href="/profile">Iniciar sesión'), 'Signed-out login must not point to the profile.')
+        assert.ok(html.includes('site-footer'), 'The public shell must render its footer.')
+      }
+      if (location === '/login' || location === '/register') {
+        assert.ok(!html.includes('site-footer'), 'Authentication pages must not render the shared footer.')
+      }
     }
+
+    const authenticatedHeader = renderToString(
+      createElement(
+        StaticRouter,
+        { location: '/events' },
+        createElement(AppHeader, {
+          auth: { status: 'authenticated', user: { id: 1 } },
+        }),
+      ),
+    )
+    assert.ok(authenticatedHeader.includes('href="/profile"'), 'Authenticated users must have a profile link.')
+    assert.ok(!authenticatedHeader.includes('Únete gratis'), 'Authenticated users must not see the registration CTA.')
   } finally {
     await vite.close()
   }
