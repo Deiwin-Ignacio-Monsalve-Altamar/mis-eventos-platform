@@ -29,7 +29,7 @@ export default function LoginPage() {
     setSubmitting(true)
     try {
       await signIn(credentials)
-      navigate('/profile', { replace: true })
+      navigate(location.state?.from || '/profile', { replace: true })
     } catch {
       // The provider stores the shared authentication error for display.
     } finally {

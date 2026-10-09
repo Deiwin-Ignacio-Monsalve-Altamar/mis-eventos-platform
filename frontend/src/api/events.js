@@ -20,6 +20,19 @@ export async function getEvent(eventId) {
   return response.event
 }
 
+/** List the sessions attached to an event using the public nested route. */
+export async function listEventSessions(eventId) {
+  const response = await request(`/events/${encodeURIComponent(eventId)}/sessions`)
+  return response.sessions
+}
+
+/** Read the backend's current session capacity and occupancy snapshot. */
+export async function getSessionOccupancy(eventId, sessionId) {
+  return request(
+    `/events/${encodeURIComponent(eventId)}/sessions/${encodeURIComponent(sessionId)}/capacity`,
+  )
+}
+
 /** Create an event using the current cookie-authenticated user. */
 export async function createEvent(event) {
   const response = await request('/events', {

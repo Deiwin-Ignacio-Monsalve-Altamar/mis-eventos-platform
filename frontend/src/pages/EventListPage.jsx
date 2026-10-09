@@ -1,63 +1,126 @@
-/** Display the public event catalogue loaded through shared application state. */
+/** Explore, search, and paginate the public event catalogue. */
 
-import { useEffect } from 'react'
-import { Link } from 'react-router-dom'
-import { EmptyMessage, ErrorMessage, LoadingMessage } from '../components/RequestFeedback.jsx'
+import { useEffect, useState } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
+import EventCard from '../components/EventCard.jsx'
+import EventErrorMessage from '../components/EventErrorMessage.jsx'
+import EventsHero from '../components/EventsHero.jsx'
+import PaginationControls from '../components/PaginationControls.jsx'
+import { LoadingMessage } from '../components/RequestFeedback.jsx'
 import useAppState from '../state/useAppState.js'
 
-/** Load and render a page of events with loading, error, and empty states. */
+const EVENT_PAGE_SIZE = 9
+const SEARCH_DEBOUNCE_MS = 300
+
+/** Load and render current search criteria without leaking stale results. */
 export default function EventListPage() {
   const { state, refreshEvents } = useAppState()
   const { events } = state
+  const [searchParams, setSearchParams] = useSearchParams()
+  const routeQuery = searchParams.get('q') || ''
+  const routePage = Math.max(1, Number.parseInt(searchParams.get('page') || '1', 10) || 1)
+  const [debouncedQuery, setDebouncedQuery] = useState(routeQuery)
+  const page = routePage
+  const criteriaPending = routeQuery !== debouncedQuery
+  const loading = criteriaPending || events.status === 'idle' || events.status === 'loading'
 
   useEffect(() => {
-    refreshEvents()
-  }, [refreshEvents])
+    const timeout = window.setTimeout(() => setDebouncedQuery(routeQuery), SEARCH_DEBOUNCE_MS)
+    return () => window.clearTimeout(timeout)
+  }, [routeQuery])
+
+  useEffect(() => {
+    if (criteriaPending) return
+    refreshEvents({ query: debouncedQuery, page, pageSize: EVENT_PAGE_SIZE })
+  }, [criteriaPending, debouncedQuery, page, refreshEvents])
+
+  function handleSearchChange(value) {
+    const next = new URLSearchParams(searchParams)
+    value.trim() ? next.set('q', value) : next.delete('q')
+    next.delete('page')
+    setSearchParams(next, { replace: true })
+  }
+
+  function changePage(nextPage) {
+    const next = new URLSearchParams(searchParams)
+    nextPage > 1 ? next.set('page', String(nextPage)) : next.delete('page')
+    setSearchParams(next)
+  }
+
+  function retryCurrentSearch() {
+    refreshEvents({ query: debouncedQuery, page, pageSize: EVENT_PAGE_SIZE })
+  }
+
+  const currentResults = !loading && events.status === 'success'
+  const noResults = currentResults && events.items.length === 0
 
   return (
-    <section className="page-section">
-      <div className="page-heading">
-        <div>
-          <p className="eyebrow">Discover and plan</p>
-          <h1>Events</h1>
-        </div>
-        <Link className="button button-primary" to="/events/new">
-          Create event
-        </Link>
-      </div>
+    <div className="events-page">
+      <EventsHero
+        isSearching={criteriaPending || events.status === 'loading'}
+        onQueryChange={handleSearchChange}
+        query={routeQuery}
+      />
 
-      {events.status === 'loading' && <LoadingMessage>Loading events…</LoadingMessage>}
-      {events.status === 'error' && <ErrorMessage error={events.error} />}
-      {events.status === 'success' && events.items.length === 0 && (
-        <EmptyMessage>No events are available yet.</EmptyMessage>
-      )}
+      <section aria-labelledby="event-results-heading" className="event-discovery">
+        <header className="event-discovery-heading">
+          <div>
+            <p className="eyebrow">Una agenda para salir de la rutina</p>
+            <h2 id="event-results-heading">Planes con otra energía</h2>
+          </div>
+          {currentResults && events.pagination && (
+            <p className="event-results-count">
+              {events.pagination.total} {events.pagination.total === 1 ? 'plan' : 'planes'}
+            </p>
+          )}
+        </header>
 
-      {events.items.length > 0 && (
-        <div className="event-grid">
-          {events.items.map((event) => (
-            <article className="event-card" key={event.id}>
-              <div className="event-card-meta">
-                <span className={`status-badge status-${event.status}`}>{event.status}</span>
-                <time dateTime={event.starts_at}>{formatDate(event.starts_at)}</time>
-              </div>
-              <h2>{event.title}</h2>
-              <p>{event.description || 'Event details will be announced soon.'}</p>
-              <p className="event-location">{event.location || 'Location to be announced'}</p>
-              <Link className="text-link" to={`/events/${event.id}`}>
-                View event <span aria-hidden="true">→</span>
-              </Link>
-            </article>
-          ))}
-        </div>
-      )}
-    </section>
+        {loading && (
+          <LoadingMessage>
+            {criteriaPending ? 'Buscando eventos…' : 'Cargando eventos…'}
+          </LoadingMessage>
+        )}
+
+        {!loading && events.status === 'error' && (
+          <div className="event-request-error">
+            <EventErrorMessage error={events.error} />
+            <button className="button button-secondary" onClick={retryCurrentSearch} type="button">
+              Intentar de nuevo
+            </button>
+          </div>
+        )}
+
+        {noResults && (
+          <div className="event-empty-state">
+            <p className="event-empty-mark" aria-hidden="true">∅</p>
+            <p className="eyebrow">{debouncedQuery ? 'Otra búsqueda, otro plan' : 'La agenda está por comenzar'}</p>
+            <h3>{debouncedQuery ? 'No encontramos coincidencias' : 'Todavía no hay eventos para mostrar'}</h3>
+            <p>
+              {debouncedQuery
+                ? `No encontramos eventos relacionados con “${debouncedQuery}”. Prueba con otras palabras.`
+                : 'Vuelve pronto para descubrir nuevos encuentros.'}
+            </p>
+            {debouncedQuery
+              ? <button className="text-link" onClick={() => handleSearchChange('')} type="button">Limpiar búsqueda</button>
+              : <Link className="text-link" to="/events/new">Organiza un evento <span aria-hidden="true">↗</span></Link>}
+          </div>
+        )}
+
+        {currentResults && events.items.length > 0 && (
+          <>
+            <div aria-live="polite" className="event-grid">
+              {events.items.map((event, index) => (
+                <EventCard event={event} featured={index === 0 && page === 1 && !debouncedQuery} key={event.id} />
+              ))}
+            </div>
+            <PaginationControls
+              disabled={loading}
+              onPageChange={changePage}
+              pagination={events.pagination}
+            />
+          </>
+        )}
+      </section>
+    </div>
   )
-}
-
-/** Format a valid API timestamp for a readable event card. */
-function formatDate(value) {
-  const date = new Date(value)
-  return Number.isNaN(date.getTime())
-    ? value
-    : new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(date)
 }

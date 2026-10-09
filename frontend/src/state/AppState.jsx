@@ -5,15 +5,28 @@ import {
   useEffect,
   useMemo,
   useReducer,
+  useRef,
 } from 'react'
 import { getCurrentUser, login, registerAccount } from '../api/auth.js'
-import { createEvent, getEvent, listEvents } from '../api/events.js'
+import {
+  createEvent,
+  getEvent,
+  listEventSessions,
+  listEvents,
+} from '../api/events.js'
 import AppStateContext from './AppStateContext.js'
 
 const initialState = {
   auth: { user: null, status: 'loading', error: null },
   events: { items: [], pagination: null, status: 'idle', error: null },
-  selectedEvent: { event: null, status: 'idle', error: null },
+  selectedEvent: {
+    event: null,
+    status: 'idle',
+    error: null,
+    sessions: [],
+    sessionsStatus: 'idle',
+    sessionsError: null,
+  },
   eventCreation: { status: 'idle', error: null },
 }
 
@@ -36,6 +49,9 @@ function appReducer(state, action) {
         events: {
           items: action.events,
           pagination: action.pagination,
+          query: action.query,
+          page: action.page,
+          pageSize: action.pageSize,
           status: 'success',
           error: null,
         },
@@ -43,11 +59,27 @@ function appReducer(state, action) {
     case 'events/error':
       return { ...state, events: { ...state.events, status: 'error', error: action.error } }
     case 'selected-event/loading':
-      return { ...state, selectedEvent: { event: null, status: 'loading', error: null } }
+      return {
+        ...state,
+        selectedEvent: {
+          event: null,
+          status: 'loading',
+          error: null,
+          sessions: [],
+          sessionsStatus: 'idle',
+          sessionsError: null,
+        },
+      }
     case 'selected-event/success':
-      return { ...state, selectedEvent: { event: action.event, status: 'success', error: null } }
+      return { ...state, selectedEvent: { ...state.selectedEvent, event: action.event, status: 'success', error: null } }
     case 'selected-event/error':
-      return { ...state, selectedEvent: { event: null, status: 'error', error: action.error } }
+      return { ...state, selectedEvent: { ...state.selectedEvent, event: null, status: 'error', error: action.error } }
+    case 'selected-event/sessions-loading':
+      return { ...state, selectedEvent: { ...state.selectedEvent, sessions: [], sessionsStatus: 'loading', sessionsError: null } }
+    case 'selected-event/sessions-success':
+      return { ...state, selectedEvent: { ...state.selectedEvent, sessions: action.sessions, sessionsStatus: 'success', sessionsError: null } }
+    case 'selected-event/sessions-error':
+      return { ...state, selectedEvent: { ...state.selectedEvent, sessions: [], sessionsStatus: 'error', sessionsError: action.error } }
     case 'event-creation/loading':
       return { ...state, eventCreation: { status: 'loading', error: null } }
     case 'event-creation/success':
@@ -57,7 +89,14 @@ function appReducer(state, action) {
           ...state.events,
           items: [action.event, ...state.events.items.filter((item) => item.id !== action.event.id)],
         },
-        selectedEvent: { event: action.event, status: 'success', error: null },
+        selectedEvent: {
+          event: action.event,
+          status: 'success',
+          error: null,
+          sessions: [],
+          sessionsStatus: 'idle',
+          sessionsError: null,
+        },
         eventCreation: { status: 'success', error: null },
       }
     case 'event-creation/error':
@@ -70,6 +109,9 @@ function appReducer(state, action) {
 /** Provide shared state and API-backed actions to every application route. */
 export function AppProvider({ children }) {
   const [state, dispatch] = useReducer(appReducer, initialState)
+  const eventsRequestId = useRef(0)
+  const eventRequestId = useRef(0)
+  const sessionsRequestId = useRef(0)
 
   useEffect(() => {
     let active = true
@@ -103,23 +145,48 @@ export function AppProvider({ children }) {
 
   const signUp = useCallback((account) => registerAccount(account), [])
 
-  const refreshEvents = useCallback(async (query = '') => {
+  const refreshEvents = useCallback(async ({ query = '', page = 1, pageSize = 9 } = {}) => {
+    const requestId = ++eventsRequestId.current
     dispatch({ type: 'events/loading' })
     try {
-      const result = await listEvents({ query })
-      dispatch({ type: 'events/success', events: result.events, pagination: result.pagination })
+      const result = await listEvents({ query, page, pageSize })
+      if (requestId !== eventsRequestId.current) return
+      dispatch({
+        type: 'events/success',
+        events: result.events,
+        pagination: result.pagination,
+        query,
+        page,
+        pageSize,
+      })
     } catch (error) {
-      dispatch({ type: 'events/error', error })
+      if (requestId === eventsRequestId.current) dispatch({ type: 'events/error', error })
     }
   }, [])
 
   const loadEvent = useCallback(async (eventId) => {
+    const requestId = ++eventRequestId.current
     dispatch({ type: 'selected-event/loading' })
     try {
       const event = await getEvent(eventId)
+      if (requestId !== eventRequestId.current) return
       dispatch({ type: 'selected-event/success', event })
     } catch (error) {
-      dispatch({ type: 'selected-event/error', error })
+      if (requestId === eventRequestId.current) dispatch({ type: 'selected-event/error', error })
+    }
+  }, [])
+
+  const loadEventSessions = useCallback(async (eventId) => {
+    const requestId = ++sessionsRequestId.current
+    dispatch({ type: 'selected-event/sessions-loading' })
+    try {
+      const sessions = await listEventSessions(eventId)
+      if (requestId !== sessionsRequestId.current) return
+      dispatch({ type: 'selected-event/sessions-success', sessions })
+    } catch (error) {
+      if (requestId === sessionsRequestId.current) {
+        dispatch({ type: 'selected-event/sessions-error', error })
+      }
     }
   }, [])
 
@@ -136,8 +203,8 @@ export function AppProvider({ children }) {
   }, [])
 
   const value = useMemo(
-    () => ({ state, signIn, signUp, refreshEvents, loadEvent, submitEvent }),
-    [state, signIn, signUp, refreshEvents, loadEvent, submitEvent],
+    () => ({ state, signIn, signUp, refreshEvents, loadEvent, loadEventSessions, submitEvent }),
+    [state, signIn, signUp, refreshEvents, loadEvent, loadEventSessions, submitEvent],
   )
 
   return <AppStateContext.Provider value={value}>{children}</AppStateContext.Provider>
