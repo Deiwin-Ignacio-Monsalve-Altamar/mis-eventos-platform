@@ -5,10 +5,14 @@ from flask import current_app
 from app.application.auth.service import AuthService
 from app.application.events.service import EventService
 from app.application.health.service import HealthService
+from app.application.sessions.service import SessionService
 from app.extensions import db
 from app.infrastructure.health.repository import HealthRepository
 from app.infrastructure.repositories.sqlalchemy_event_repository import (
     SQLAlchemyEventRepository,
+)
+from app.infrastructure.repositories.sqlalchemy_session_repository import (
+    SQLAlchemySessionRepository,
 )
 from app.infrastructure.repositories.sqlalchemy_user_repository import (
     SQLAlchemyUserRepository,
@@ -34,3 +38,10 @@ def get_auth_service() -> AuthService:
 def get_event_service() -> EventService:
     """Build the event application service with the current database session."""
     return EventService(event_repository=SQLAlchemyEventRepository(session=db.session))
+
+
+def get_session_service() -> SessionService:
+    """Build session management with the current database session."""
+    return SessionService(
+        session_repository=SQLAlchemySessionRepository(session=db.session)
+    )

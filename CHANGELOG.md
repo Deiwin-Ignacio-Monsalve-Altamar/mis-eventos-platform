@@ -4,6 +4,13 @@ All notable changes to Mis Eventos are documented in this file.
 
 ## [Unreleased]
 
+### Session Management
+
+#### Added
+
+* Added event-scoped session CRUD, schedule and capacity validation, speaker assignment, and overlap detection.
+* Added service, API, and repository coverage using mocked persistence.
+
 ### Protected Event Management
 
 #### Added
