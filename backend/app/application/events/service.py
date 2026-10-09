@@ -38,11 +38,19 @@ class EventService:
             EventRecord(created_by_id=creator_id, **event_values)
         )
 
-    def update(self, event_id: int, values: dict[str, object]) -> EventRecord:
+    def update(
+        self, event_id: int, values: dict[str, object], expected_version: object
+    ) -> EventRecord:
         """Validate and persist supplied event fields without changing its creator."""
         existing = self._event_repository.find_by_id(event_id)
         if existing is None:
             raise NotFoundError("Event not found.")
+        if (
+            isinstance(expected_version, bool)
+            or not isinstance(expected_version, int)
+            or expected_version < 1
+        ):
+            raise ValidationError("A positive integer resource version is required.")
         if not values:
             raise ValidationError("At least one editable event field is required.")
 
@@ -60,9 +68,10 @@ class EventService:
         updated = EventRecord(
             id=existing.id,
             created_by_id=existing.created_by_id,
+            version=existing.version,
             **event_values,
         )
-        return self._event_repository.save(updated)
+        return self._event_repository.save(updated, expected_version)
 
     def delete(self, event_id: int) -> None:
         """Delete an event or raise when it is missing or still referenced."""
@@ -174,7 +183,9 @@ class EventService:
         """Parse a timezone-aware ISO-8601 value and normalize it to UTC."""
         if isinstance(value, datetime):
             if value.tzinfo is None or value.utcoffset() is None:
-                value = value.replace(tzinfo=UTC)
+                raise ValidationError(
+                    f"{field_name} must be a timezone-aware ISO-8601 value."
+                )
             return value.astimezone(UTC)
         if not isinstance(value, str):
             raise ValidationError(

@@ -12,11 +12,15 @@ from app.api.events.routes import event_bp
 from app.application.dto.event_page import EventPage
 from app.core.exceptions import (
     AuthenticationError,
+    ConcurrencyConflictError,
+    DuplicateRegistrationError,
+    EventCapacityExceededError,
     NotFoundError,
     RelatedRecordsError,
     ValidationError,
 )
 from app.domain.entities.event_record import EventRecord
+from app.domain.entities.event_registration import EventRegistrationRecord
 from app.domain.entities.user_account import UserAccount
 
 TEST_TOKEN = "test-access-token"
@@ -51,9 +55,19 @@ def event_client(monkeypatch):
     event_service.list_events.return_value = EventPage(
         events=(EVENT,), page=1, page_size=20, total=1
     )
+    registration_service = Mock()
+    registration_service.register.return_value = EventRegistrationRecord(
+        31, EVENT.id, ACCOUNT.id, "registered"
+    )
+    event_service.registration_service = registration_service
     auth_service = Mock()
     auth_service.get_authenticated_user.return_value = ACCOUNT
     monkeypatch.setattr(event_routes, "get_event_service", lambda: event_service)
+    monkeypatch.setattr(
+        event_routes,
+        "get_event_registration_service",
+        lambda: registration_service,
+    )
     monkeypatch.setattr(decorators, "get_auth_service", lambda: auth_service)
     app.register_blueprint(event_bp, url_prefix="/api/v1")
     return app.test_client(), event_service, auth_service
@@ -119,7 +133,9 @@ def test_create_and_update_map_service_validation_errors(event_client):
     event_service.update.side_effect = ValidationError("Invalid date range.")
 
     create_response = client.post("/api/v1/events", json=valid_event_payload())
-    update_response = client.patch("/api/v1/events/12", json={"capacity": 0})
+    update_response = client.patch(
+        "/api/v1/events/12", json={"capacity": 0, "version": 1}
+    )
 
     assert create_response.status_code == 400
     assert update_response.status_code == 400
@@ -191,12 +207,102 @@ def test_update_event_calls_service_and_returns_event(event_client):
 
     response = client.patch(
         "/api/v1/events/12",
-        json={"title": "Revised Event", "created_by_id": 999},
+        json={"title": "Revised Event", "created_by_id": 999, "version": 1},
     )
 
     assert response.status_code == 200
     assert response.json["event"]["title"] == EVENT.title
-    event_service.update.assert_called_once_with(12, {"title": "Revised Event"})
+    event_service.update.assert_called_once_with(12, {"title": "Revised Event"}, 1)
+
+
+def test_update_event_returns_conflict_with_current_version(event_client):
+    """Return the latest version when the submitted event version is stale."""
+    client, event_service, _ = event_client
+    add_valid_access_cookie(client)
+    event_service.update.side_effect = ConcurrencyConflictError(
+        "The event changed since it was loaded.", current_version=3
+    )
+
+    response = client.patch(
+        "/api/v1/events/12", json={"title": "Revised", "version": 2}
+    )
+
+    assert response.status_code == 409
+    assert response.json["error"] == {
+        "code": "concurrency_conflict",
+        "message": "The event changed since it was loaded.",
+        "current_version": 3,
+    }
+
+
+def test_update_event_requires_a_positive_version(event_client):
+    """Reject an update without a usable version before calling the service."""
+    client, event_service, _ = event_client
+    add_valid_access_cookie(client)
+
+    response = client.patch("/api/v1/events/12", json={"title": "Revised"})
+
+    assert response.status_code == 400
+    assert response.json["error"]["code"] == "invalid_request"
+    event_service.update.assert_not_called()
+
+
+def test_event_registration_endpoints_use_authenticated_user(event_client):
+    """Register and cancel only the identity resolved from the access token."""
+    client, event_service, _ = event_client
+    add_valid_access_cookie(client)
+
+    registration = client.post(
+        "/api/v1/events/12/registrations/me", json={"user_id": 999}
+    )
+    cancellation = client.delete("/api/v1/events/12/registrations/me")
+
+    assert registration.status_code == 201
+    assert registration.json["registration"] == {
+        "id": 31,
+        "event_id": EVENT.id,
+        "user_id": ACCOUNT.id,
+        "status": "registered",
+    }
+    assert cancellation.status_code == 204
+    event_service.registration_service.register.assert_called_once_with(
+        EVENT.id, ACCOUNT.id
+    )
+    event_service.registration_service.cancel.assert_called_once_with(
+        EVENT.id, ACCOUNT.id
+    )
+
+
+@pytest.mark.parametrize("method", ["post", "delete"])
+def test_event_registration_writes_require_authentication(event_client, method):
+    """Reject event registration mutations without authentication."""
+    client, event_service, _ = event_client
+
+    response = getattr(client, method)("/api/v1/events/12/registrations/me")
+
+    assert response.status_code == 401
+    event_service.registration_service.register.assert_not_called()
+    event_service.registration_service.cancel.assert_not_called()
+
+
+def test_event_registration_maps_capacity_and_duplicate_conflicts(event_client):
+    """Return HTTP 409 for full events and duplicate active registrations."""
+    client, event_service, _ = event_client
+    add_valid_access_cookie(client)
+    registration_service = event_service.registration_service
+    registration_service.register.side_effect = EventCapacityExceededError(
+        "The event has no available seats."
+    )
+    full = client.post("/api/v1/events/12/registrations/me")
+    registration_service.register.side_effect = DuplicateRegistrationError(
+        "The user is already registered for this event."
+    )
+    duplicate = client.post("/api/v1/events/12/registrations/me")
+
+    assert full.status_code == 409
+    assert full.json["error"]["code"] == "capacity_exceeded"
+    assert duplicate.status_code == 409
+    assert duplicate.json["error"]["code"] == "duplicate_registration"
 
 
 def test_event_list_maps_page_and_search_results(event_client):
@@ -243,6 +349,7 @@ def test_get_event_returns_service_result(event_client):
 
     assert response.status_code == 200
     assert response.json["event"]["id"] == EVENT.id
+    assert response.json["event"]["version"] == EVENT.version
     event_service.get_by_id.assert_called_once_with(12)
 
 

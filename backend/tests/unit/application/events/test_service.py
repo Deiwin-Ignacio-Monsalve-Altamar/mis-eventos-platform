@@ -29,7 +29,9 @@ MISSING_FIELD = object()
 def event_service():
     """Build the event application service with a mocked repository."""
     repository = Mock(spec=EventRepository)
-    repository.save.side_effect = lambda event: replace(event, id=12)
+    repository.save.side_effect = lambda event, expected_version=None: replace(
+        event, id=12, version=(expected_version or 0) + 1
+    )
     return EventService(repository), repository
 
 
@@ -78,6 +80,7 @@ def test_create_event_validation_error_does_not_call_repository(event_service):
         {"starts_at": None},
         {"starts_at": "not-a-date"},
         {"starts_at": "2030-01-01T10:00:00"},
+        {"starts_at": datetime.fromisoformat("2030-01-01T10:00:00")},
         {"ends_at": MISSING_FIELD},
         {"ends_at": None},
         {"ends_at": "not-a-date"},
@@ -96,6 +99,7 @@ def test_create_event_validation_error_does_not_call_repository(event_service):
         "null-start",
         "invalid-start",
         "naive-start",
+        "naive-datetime-object-start",
         "missing-end",
         "null-end",
         "invalid-end",
@@ -156,12 +160,15 @@ def test_update_event_merges_fields_and_preserves_creator(event_service):
     service, repository = event_service
     repository.find_by_id.return_value = EVENT
 
-    updated_event = service.update(12, {"title": "Revised Conference"})
+    updated_event = service.update(
+        12, {"title": "Revised Conference"}, expected_version=1
+    )
 
     assert updated_event.title == "Revised Conference"
     saved_event = repository.save.call_args.args[0]
     assert saved_event.created_by_id == EVENT.created_by_id
     assert saved_event.capacity == EVENT.capacity
+    repository.save.assert_called_once_with(saved_event, 1)
 
 
 def test_update_missing_event_raises_not_found(event_service):
@@ -170,7 +177,7 @@ def test_update_missing_event_raises_not_found(event_service):
     repository.find_by_id.return_value = None
 
     with pytest.raises(NotFoundError):
-        service.update(999, {"title": "Missing"})
+        service.update(999, {"title": "Missing"}, expected_version=1)
 
     repository.save.assert_not_called()
 

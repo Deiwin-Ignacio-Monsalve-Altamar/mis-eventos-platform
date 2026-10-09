@@ -6,6 +6,7 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
+import app.infrastructure.database.models  # noqa: F401
 from app.config import Config
 from app.extensions import db
 

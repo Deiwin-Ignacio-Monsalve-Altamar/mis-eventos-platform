@@ -1,7 +1,9 @@
 """Verify route and application-service flows while mocking infrastructure."""
 
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from datetime import UTC, datetime
+from threading import Barrier, Lock
 from unittest.mock import Mock
 
 import pytest
@@ -12,12 +14,18 @@ from app.api.auth import routes as auth_routes
 from app.api.auth.routes import auth_bp
 from app.api.events import routes as event_routes
 from app.api.events.routes import event_bp
+from app.api.sessions import routes as session_routes
+from app.api.sessions.routes import session_bp
 from app.application.auth.service import AuthService
 from app.application.events.service import EventService
-from app.core.exceptions import RelatedRecordsError
+from app.application.sessions.attendees import SessionAttendeeService
+from app.core.exceptions import CapacityExceededError, RelatedRecordsError
 from app.domain.entities.event_record import EventRecord
 from app.domain.entities.user_account import UserAccount
 from app.domain.repositories.event_repository import EventRepository
+from app.domain.repositories.session_attendee_repository import (
+    SessionAttendeeRepository,
+)
 from app.domain.repositories.user_repository import UserRepository
 
 TEST_SECRET = "integration-test-secret-with-more-than-thirty-two-bytes"
@@ -148,3 +156,67 @@ def test_related_record_delete_conflict_flows_through_route_and_service(
     assert response.status_code == 409
     assert response.json["error"]["code"] == "related_records"
     event_repository.delete.assert_called_once_with(EVENT.id)
+
+
+def test_concurrent_session_enrollments_return_one_success_and_one_capacity_conflict(
+    monkeypatch,
+):
+    """Exercise parallel HTTP requests with a synchronized mock capacity store."""
+    attendees = {
+        "token-a": UserAccount("a@example.test", "hash", "Alex", "One", id=21),
+        "token-b": UserAccount("b@example.test", "hash", "Blair", "Two", id=22),
+    }
+    auth_service = Mock()
+    auth_service.get_authenticated_user.side_effect = attendees.__getitem__
+    repository = Mock(spec=SessionAttendeeRepository)
+    repository.find_event_creator_id.return_value = EVENT.created_by_id
+    repository.session_exists.return_value = True
+    ready_barrier = Barrier(3)
+    capacity_lock = Lock()
+    capacity = 2
+    occupancy = {"active": 1}
+
+    def enroll(event_id, session_id, user_id):
+        """Atomically check and consume the final seat in shared mock state."""
+        ready_barrier.wait(timeout=5)
+        with capacity_lock:
+            if occupancy["active"] >= capacity:
+                raise CapacityExceededError("The session has no available seats.")
+            occupancy["active"] += 1
+
+    repository.enroll.side_effect = enroll
+    attendee_service = SessionAttendeeService(repository)
+    monkeypatch.setattr(decorators, "get_auth_service", lambda: auth_service)
+    monkeypatch.setattr(
+        session_routes,
+        "get_session_attendee_service",
+        lambda: attendee_service,
+    )
+
+    app = Flask(__name__)
+    app.config.update(TESTING=True)
+    app.register_blueprint(session_bp, url_prefix="/api/v1")
+    clients = []
+    for token in attendees:
+        client = app.test_client()
+        client.set_cookie("access_token", token)
+        clients.append(client)
+
+    def send_enrollment(client):
+        """Send one authenticated session-enrollment request."""
+        response = client.post("/api/v1/events/12/sessions/34/attendees")
+        return response.status_code, response.json
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [executor.submit(send_enrollment, client) for client in clients]
+        ready_barrier.wait(timeout=5)
+        results = [future.result(timeout=5) for future in futures]
+
+    assert sorted(status for status, _ in results) == [201, 409]
+    rejected = next(payload for status, payload in results if status == 409)
+    accepted = next(payload for status, payload in results if status == 201)
+    assert rejected["error"]["code"] == "capacity_exceeded"
+    assert accepted["message"] == "Session registration is active."
+    assert occupancy["active"] == capacity
+    assert repository.enroll.call_count == 2
+    assert {call.args[2] for call in repository.enroll.call_args_list} == {21, 22}

@@ -17,3 +17,4 @@ class EventRecord:
     location: str | None = None
     status: str = "draft"
     id: int | None = None
+    version: int = 1
