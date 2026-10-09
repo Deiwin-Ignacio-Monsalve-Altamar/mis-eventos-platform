@@ -36,3 +36,4 @@ class User(db.Model):
     registrations = db.relationship(
         "Registration", back_populates="user", cascade="all, delete-orphan"
     )
+    created_events = db.relationship("Event", back_populates="creator")

@@ -21,6 +21,9 @@ class Event(db.Model):
     )
 
     id = db.Column(db.Integer, primary_key=True)
+    created_by_id = db.Column(
+        db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
     title = db.Column(db.String(200), nullable=False)
     description = db.Column(db.Text, nullable=True)
     location = db.Column(db.String(255), nullable=True)
@@ -49,3 +52,4 @@ class Event(db.Model):
     speakers = db.relationship(
         "Speaker", secondary=event_speakers, back_populates="events"
     )
+    creator = db.relationship("User", back_populates="created_events")

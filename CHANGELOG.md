@@ -4,6 +4,18 @@ All notable changes to Mis Eventos are documented in this file.
 
 ## [Unreleased]
 
+### Protected Event Management
+
+#### Added
+
+* Added authenticated `POST /api/v1/events` and `PATCH /api/v1/events/<event_id>` endpoints.
+* Added nullable event creator attribution and its Alembic migration.
+* Added tests for authorized operations, missing/invalid/expired tokens, validation failures, and unchanged data after rejected requests.
+
+#### Security
+
+* Set event creator identity from the validated access token and ignored client-supplied identity fields.
+
 ### Authentication and Authorization
 
 #### Added
