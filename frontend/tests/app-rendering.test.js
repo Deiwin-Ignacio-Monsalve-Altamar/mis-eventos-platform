@@ -17,12 +17,12 @@ test('application provider renders every required route without a blank screen',
   try {
     const { default: App } = await vite.ssrLoadModule('/src/App.jsx')
     const routes = [
-      ['/events', 'Events'],
+      ['/events', 'Eventos'],
       ['/events/42', 'Select an event to see its details.'],
       ['/events/new', 'Checking your sign-in status…'],
-      ['/login', 'Sign in'],
-      ['/register', 'Create an account'],
-      ['/profile', 'Loading your profile…'],
+      ['/login', '¡Qué bueno verte!'],
+      ['/register', 'Crea tu cuenta'],
+      ['/profile', 'Estamos cargando tu perfil…'],
     ]
 
     for (const [location, expectedContent] of routes) {
