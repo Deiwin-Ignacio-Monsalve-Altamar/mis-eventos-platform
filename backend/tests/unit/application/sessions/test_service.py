@@ -39,7 +39,9 @@ def setup_service():
     repository.find_event.return_value = EVENT
     repository.find_overlapping.return_value = None
     repository.speaker_ids_exist.return_value = True
-    repository.save.side_effect = lambda record: replace(record, id=2)
+    repository.save.side_effect = lambda record, expected_version=None: replace(
+        record, id=2, version=(expected_version or 0) + 1
+    )
     return SessionService(repository), repository
 
 
@@ -71,12 +73,24 @@ def test_create_and_list_and_get_session(setup_service):
     )
 
 
+def test_create_assigns_existing_speakers_by_identifier(setup_service):
+    """Validate speaker IDs and pass only their association IDs to persistence."""
+    service, repository = setup_service
+
+    created = service.create(1, valid_values(speaker_ids=[4]))
+
+    assert created.speaker_ids == (4,)
+    repository.speaker_ids_exist.assert_called_once_with((4,))
+    assert repository.save.call_args.args[0].speaker_ids == (4,)
+
+
 def test_update_excludes_current_session_and_delete(setup_service):
     """Merge updates, exclude the current identifier from overlaps, and delete."""
     service, repository = setup_service
     repository.find_by_id.return_value = RECORD
-    updated = service.update(1, 2, {"title": "Revised"})
+    updated = service.update(1, 2, {"title": "Revised"}, expected_version=1)
     assert updated.title == "Revised"
+    assert updated.version == 2
     repository.find_overlapping.assert_called_once_with(
         1, RECORD.starts_at, RECORD.ends_at, 2
     )
@@ -91,6 +105,7 @@ def test_update_excludes_current_session_and_delete(setup_service):
         {"title": " "},
         {"starts_at": None},
         {"starts_at": "invalid"},
+        {"starts_at": datetime.fromisoformat("2030-01-01T10:00:00")},
         {"ends_at": "2030-01-01T10:00:00+00:00"},
         {"starts_at": "2030-01-01T08:00:00+00:00"},
         {"capacity": True},
@@ -129,7 +144,7 @@ def test_update_rejects_nonexistent_speaker_without_saving(setup_service):
     repository.speaker_ids_exist.return_value = False
 
     with pytest.raises(ValidationError, match="speakers do not exist"):
-        service.update(1, 2, {"speaker_ids": [999]})
+        service.update(1, 2, {"speaker_ids": [999]}, expected_version=1)
 
     repository.save.assert_not_called()
 
@@ -150,7 +165,7 @@ def test_rejects_missing_event_session_speaker_and_overlap(setup_service):
         service.create(1, valid_values())
     repository.find_by_id.return_value = RECORD
     with pytest.raises(ValidationError, match="overlaps"):
-        service.update(1, 2, {"title": "Change"})
+        service.update(1, 2, {"title": "Change"}, expected_version=1)
 
 
 def test_consecutive_session_is_not_reported_as_overlap(setup_service):

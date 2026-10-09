@@ -16,3 +16,4 @@ class SessionRecord:
     ends_at: datetime
     capacity: int
     speaker_ids: tuple[int, ...] = ()
+    version: int = 1

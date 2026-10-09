@@ -31,8 +31,10 @@ class SessionRepository(Protocol):
     def speaker_ids_exist(self, speaker_ids: tuple[int, ...]) -> bool:
         """Return whether every requested speaker identifier exists."""
 
-    def save(self, session: SessionRecord) -> SessionRecord:
-        """Insert or update a session and replace its speaker associations."""
+    def save(
+        self, session: SessionRecord, expected_version: int | None = None
+    ) -> SessionRecord:
+        """Insert or version-check a session and replace its speaker associations."""
 
     def delete(self, event_id: int, session_id: int) -> bool:
         """Delete a session only when it belongs to the requested event."""

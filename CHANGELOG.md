@@ -10,6 +10,11 @@ All notable changes to Mis Eventos are documented in this file.
 
 * Added event-scoped session CRUD, schedule and capacity validation, speaker assignment, and overlap detection.
 * Added service, API, and repository coverage using mocked persistence.
+* Added session attendee enrollment linked to event registrations, cancellation, occupancy reporting, and capacity-safe concurrent writes.
+* Restricted attendee roster access to the event creator and enrollment changes to the authenticated attendee.
+* Added optimistic version checks to event and session updates, with conflict responses that report the current version.
+* Serialized session enrollment, cancellation, and capacity changes with PostgreSQL row locks and transactional occupancy checks.
+* Added self-service event registration, cancellation, and reactivation; event cancellation now cancels linked active session enrollments atomically.
 
 ### Protected Event Management
 
@@ -29,6 +34,7 @@ All notable changes to Mis Eventos are documented in this file.
 #### Added
 
 * Added user registration and login endpoints.
+* Added email validation and duplicate account handling.
 * Added authentication tests for registration, login, duplicate emails, invalid input, and token validation.
 * Added JWT authentication with expiration and HttpOnly cookies.
 
@@ -46,27 +52,6 @@ All notable changes to Mis Eventos are documented in this file.
 #### Changed
 
 * Updated authentication documentation.
-* Deferred event creation and editing authorization until event endpoints are implemented.
-
-
-### Authentication and Authorization
-
-#### Added
-
-* Added user registration and login endpoints.
-* Added email validation and duplicate account handling.
-* Added token-based authentication with expiration.
-* Added authentication tests for registration, login, and unauthorized access.
-
-#### Security
-
-* Added password hashing and credential verification.
-* Added HttpOnly authentication cookies.
-
-#### Fixed
-
-* Fixed code formatting and import ordering issues.
-* Fixed authentication validation issues identified during testing.
 
 ## [Completed]
 

@@ -47,10 +47,20 @@ class SessionService:
         return session
 
     def update(
-        self, event_id: int, session_id: int, values: dict[str, object]
+        self,
+        event_id: int,
+        session_id: int,
+        values: dict[str, object],
+        expected_version: object,
     ) -> SessionRecord:
         """Merge, validate, and save editable fields for an existing session."""
         existing = self.get(event_id, session_id)
+        if (
+            isinstance(expected_version, bool)
+            or not isinstance(expected_version, int)
+            or expected_version < 1
+        ):
+            raise ValidationError("A positive integer resource version is required.")
         if not values:
             raise ValidationError("At least one editable session field is required.")
         merged = {
@@ -60,6 +70,7 @@ class SessionService:
             "ends_at": existing.ends_at,
             "capacity": existing.capacity,
             "speaker_ids": list(existing.speaker_ids),
+            "version": existing.version,
         }
         merged.update(values)
         record = self._validated(event_id, merged, self._event(event_id), session_id)
@@ -67,7 +78,7 @@ class SessionService:
             event_id, record.starts_at, record.ends_at, session_id
         ):
             raise ValidationError("Session schedule overlaps another session.")
-        return self._repository.save(record)
+        return self._repository.save(record, expected_version)
 
     def delete(self, event_id: int, session_id: int) -> None:
         """Delete a session from its event without affecting related profiles."""
@@ -120,6 +131,7 @@ class SessionService:
             ends,
             capacity,
             speaker_tuple,
+            version=values.get("version", 1),
         )
 
     @staticmethod

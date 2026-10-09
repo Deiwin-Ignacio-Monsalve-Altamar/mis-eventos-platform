@@ -3,11 +3,22 @@
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.exc import StaleDataError
 
-from app.core.exceptions import NotFoundError, ValidationError
+from app.core.exceptions import (
+    ConcurrencyConflictError,
+    NotFoundError,
+    ValidationError,
+)
 from app.domain.entities.event_record import EventRecord
 from app.domain.entities.session_record import SessionRecord
-from app.infrastructure.database.models import Event, EventSession, Speaker
+from app.infrastructure.database.models import (
+    Event,
+    EventSession,
+    Registration,
+    SessionRegistration,
+    Speaker,
+)
 
 
 class SQLAlchemySessionRepository:
@@ -71,19 +82,60 @@ class SQLAlchemySessionRepository:
         )
         return count == len(speaker_ids)
 
-    def save(self, session: SessionRecord) -> SessionRecord:
-        """Insert or update a session and atomically replace speaker links."""
+    def save(
+        self, session: SessionRecord, expected_version: int | None = None
+    ) -> SessionRecord:
+        """Lock the event, validate overlap and capacity, then persist atomically."""
+        event = self._session.scalar(
+            select(Event)
+            .where(Event.id == session.event_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        if event is None:
+            self._session.rollback()
+            raise NotFoundError("Event not found.")
+        if session.starts_at < event.starts_at or session.ends_at > event.ends_at:
+            self._session.rollback()
+            raise ValidationError("Session dates must be within the event schedule.")
+
         model = (
-            self._session.get(EventSession, session.id)
+            self._session.scalar(
+                select(EventSession)
+                .where(EventSession.id == session.id)
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
             if session.id is not None
             else EventSession()
         )
         if model is None:
+            self._session.rollback()
             raise NotFoundError("Session no longer exists for this event.")
         if session.id is None:
             model.event_id = session.event_id
-        elif model.event_id != session.event_id:
-            raise NotFoundError("Session does not belong to this event.")
+        else:
+            if model.event_id != session.event_id:
+                self._session.rollback()
+                raise NotFoundError("Session does not belong to this event.")
+            if expected_version is None:
+                self._session.rollback()
+                raise ValidationError("A resource version is required for updates.")
+            if model.version != expected_version:
+                self._session.rollback()
+                raise ConcurrencyConflictError(
+                    "The session changed since it was loaded. Review the current version and retry.",
+                    model.version,
+                )
+            if self._active_registration_count(session.id) > session.capacity:
+                self._session.rollback()
+                raise ValidationError(
+                    "Capacity cannot be lower than active session registrations."
+                )
+        if self._has_schedule_overlap(session):
+            self._session.rollback()
+            raise ValidationError("Session schedule overlaps another session.")
+
         model.title = session.title
         model.description = session.description
         model.starts_at = session.starts_at
@@ -99,26 +151,69 @@ class SQLAlchemySessionRepository:
             else []
         )
         if len(speakers) != len(session.speaker_ids):
+            self._session.rollback()
             raise ValidationError("One or more speakers do not exist.")
         model.speakers = speakers
         self._session.add(model)
         try:
             self._session.commit()
+        except StaleDataError as error:
+            self._session.rollback()
+            raise ConcurrencyConflictError(
+                "The session changed while this update was being saved. Review the current version and retry.",
+                self._current_version(session.id),
+            ) from error
         except IntegrityError as error:
             self._session.rollback()
             raise ValidationError(
                 "The session violates a data integrity rule."
             ) from error
+        except Exception:
+            self._session.rollback()
+            raise
         return self._to_record(model)
 
+    def _has_schedule_overlap(self, session: SessionRecord) -> bool:
+        """Check strict schedule overlap while the parent event row is locked."""
+        statement = select(EventSession.id).where(
+            EventSession.event_id == session.event_id,
+            EventSession.starts_at < session.ends_at,
+            EventSession.ends_at > session.starts_at,
+        )
+        if session.id is not None:
+            statement = statement.where(EventSession.id != session.id)
+        return self._session.scalar(statement.limit(1)) is not None
+
+    def _current_version(self, session_id: int | None) -> int | None:
+        """Read the latest committed session version after a write conflict."""
+        if session_id is None:
+            return None
+        return self._session.scalar(
+            select(EventSession.version).where(EventSession.id == session_id)
+        )
+
     def delete(self, event_id: int, session_id: int) -> bool:
-        """Delete only the requested session belonging to the specified event."""
+        """Lock parent and session rows before deleting the requested session."""
+        event = self._session.scalar(
+            select(Event)
+            .where(Event.id == event_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        if event is None:
+            self._session.rollback()
+            return False
         model = self._session.scalar(
-            select(EventSession).where(
-                EventSession.id == session_id, EventSession.event_id == event_id
+            select(EventSession)
+            .where(
+                EventSession.id == session_id,
+                EventSession.event_id == event_id,
             )
+            .with_for_update()
+            .execution_options(populate_existing=True)
         )
         if model is None:
+            self._session.rollback()
             return False
         self._session.delete(model)
         try:
@@ -126,6 +221,9 @@ class SQLAlchemySessionRepository:
         except IntegrityError as error:
             self._session.rollback()
             raise ValidationError("The session could not be deleted safely.") from error
+        except Exception:
+            self._session.rollback()
+            raise
         return True
 
     @staticmethod
@@ -140,4 +238,23 @@ class SQLAlchemySessionRepository:
             model.ends_at,
             model.capacity,
             tuple(speaker.id for speaker in model.speakers),
+            model.version,
+        )
+
+    def _active_registration_count(self, session_id: int) -> int:
+        """Count active session enrollments linked to active event registrations."""
+        return (
+            self._session.scalar(
+                select(func.count(SessionRegistration.id))
+                .join(
+                    Registration,
+                    Registration.id == SessionRegistration.registration_id,
+                )
+                .where(
+                    SessionRegistration.session_id == session_id,
+                    SessionRegistration.status == "active",
+                    Registration.status == "registered",
+                )
+            )
+            or 0
         )

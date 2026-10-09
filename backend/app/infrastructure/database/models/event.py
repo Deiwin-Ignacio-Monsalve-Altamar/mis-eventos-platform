@@ -18,6 +18,7 @@ class Event(db.Model):
             "status IN ('draft', 'published', 'cancelled', 'completed')",
             name="ck_events_status_valid",
         ),
+        CheckConstraint("version > 0", name="ck_events_version_positive"),
     )
 
     id = db.Column(db.Integer, primary_key=True)
@@ -42,6 +43,9 @@ class Event(db.Model):
         server_default=func.now(),
         onupdate=func.now(),
     )
+    version = db.Column(db.Integer, nullable=False, default=1, server_default=text("1"))
+
+    __mapper_args__ = {"version_id_col": version}  # noqa: RUF012
 
     sessions = db.relationship(
         "EventSession", back_populates="event", cascade="all, delete-orphan"

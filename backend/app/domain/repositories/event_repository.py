@@ -18,8 +18,10 @@ class EventRepository(Protocol):
         """Return one ordered event page and the total number of matches."""
         ...
 
-    def save(self, event: EventRecord) -> EventRecord:
-        """Insert a new event or persist changes to an existing event."""
+    def save(
+        self, event: EventRecord, expected_version: int | None = None
+    ) -> EventRecord:
+        """Insert an event or atomically update it against the client's version."""
         ...
 
     def delete(self, event_id: int) -> bool:

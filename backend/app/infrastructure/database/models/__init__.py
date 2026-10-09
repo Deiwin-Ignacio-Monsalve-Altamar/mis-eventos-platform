@@ -7,6 +7,7 @@ from app.infrastructure.database.models.associations import (
 from app.infrastructure.database.models.event import Event
 from app.infrastructure.database.models.event_session import EventSession
 from app.infrastructure.database.models.registration import Registration
+from app.infrastructure.database.models.session_registration import SessionRegistration
 from app.infrastructure.database.models.speaker import Speaker
 from app.infrastructure.database.models.user import User
 
@@ -14,6 +15,7 @@ __all__ = [
     "Event",
     "EventSession",
     "Registration",
+    "SessionRegistration",
     "Speaker",
     "User",
     "event_speakers",

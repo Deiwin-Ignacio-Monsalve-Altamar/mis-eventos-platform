@@ -5,11 +5,19 @@ from flask import current_app
 from app.application.auth.service import AuthService
 from app.application.events.service import EventService
 from app.application.health.service import HealthService
+from app.application.registrations.service import EventRegistrationService
+from app.application.sessions.attendees import SessionAttendeeService
 from app.application.sessions.service import SessionService
 from app.extensions import db
 from app.infrastructure.health.repository import HealthRepository
+from app.infrastructure.repositories.sqlalchemy_event_registration_repository import (
+    SQLAlchemyEventRegistrationRepository,
+)
 from app.infrastructure.repositories.sqlalchemy_event_repository import (
     SQLAlchemyEventRepository,
+)
+from app.infrastructure.repositories.sqlalchemy_session_attendee_repository import (
+    SQLAlchemySessionAttendeeRepository,
 )
 from app.infrastructure.repositories.sqlalchemy_session_repository import (
     SQLAlchemySessionRepository,
@@ -44,4 +52,18 @@ def get_session_service() -> SessionService:
     """Build session management with the current database session."""
     return SessionService(
         session_repository=SQLAlchemySessionRepository(session=db.session)
+    )
+
+
+def get_session_attendee_service() -> SessionAttendeeService:
+    """Build session attendee operations with the current database session."""
+    return SessionAttendeeService(
+        repository=SQLAlchemySessionAttendeeRepository(session=db.session)
+    )
+
+
+def get_event_registration_service() -> EventRegistrationService:
+    """Build event registration use cases with the active database session."""
+    return EventRegistrationService(
+        repository=SQLAlchemyEventRegistrationRepository(session=db.session)
     )
