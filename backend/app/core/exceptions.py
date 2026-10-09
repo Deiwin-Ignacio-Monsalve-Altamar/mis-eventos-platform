@@ -29,6 +29,10 @@ class EventCapacityExceededError(Exception):
     """Raised when an event has no attendee seats remaining."""
 
 
+class EventUnavailableError(Exception):
+    """Raised when an event is not open for new registrations."""
+
+
 class DuplicateRegistrationError(Exception):
     """Raised when an account already has an active session registration."""
 

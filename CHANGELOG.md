@@ -16,6 +16,13 @@ All notable changes to Mis Eventos are documented in this file.
 * Serialized session enrollment, cancellation, and capacity changes with PostgreSQL row locks and transactional occupancy checks.
 * Added self-service event registration, cancellation, and reactivation; event cancellation now cancels linked active session enrollments atomically.
 
+### Event Registration and Attendee Management
+
+#### Added
+
+* Added registration availability checks for published events starting in the future.
+* Added a paginated authenticated endpoint for listing the current user's active and cancelled event registrations with event details.
+
 ### Protected Event Management
 
 #### Added

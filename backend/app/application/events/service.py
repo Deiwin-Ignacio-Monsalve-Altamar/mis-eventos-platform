@@ -3,6 +3,7 @@
 from datetime import UTC, datetime
 
 from app.application.dto.event_page import EventPage
+from app.application.pagination import positive_integer
 from app.core.exceptions import NotFoundError, ValidationError
 from app.domain.entities.event_record import EventRecord
 from app.domain.repositories.event_repository import EventRepository
@@ -111,19 +112,7 @@ class EventService:
         value: object, field_name: str, default: int, maximum: int
     ) -> int:
         """Parse a positive integer query parameter within its configured limit."""
-        if value is None:
-            return default
-        if (
-            not isinstance(value, str)
-            or not value.isascii()
-            or not value.isdecimal()
-            or len(value) > len(str(maximum))
-        ):
-            raise ValidationError(f"{field_name} must be a positive integer.")
-        parsed_value = int(value)
-        if parsed_value < 1 or parsed_value > maximum:
-            raise ValidationError(f"{field_name} must be between 1 and {maximum}.")
-        return parsed_value
+        return positive_integer(value, field_name, default, maximum)
 
     @staticmethod
     def _normalize_search_query(value: object) -> str | None:

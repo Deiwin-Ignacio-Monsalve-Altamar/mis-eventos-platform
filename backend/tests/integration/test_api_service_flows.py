@@ -18,10 +18,22 @@ from app.api.sessions import routes as session_routes
 from app.api.sessions.routes import session_bp
 from app.application.auth.service import AuthService
 from app.application.events.service import EventService
+from app.application.registrations.service import EventRegistrationService
 from app.application.sessions.attendees import SessionAttendeeService
-from app.core.exceptions import CapacityExceededError, RelatedRecordsError
+from app.core.exceptions import (
+    CapacityExceededError,
+    EventCapacityExceededError,
+    RelatedRecordsError,
+)
 from app.domain.entities.event_record import EventRecord
+from app.domain.entities.event_registration import (
+    EventRegistrationDetails,
+    EventRegistrationRecord,
+)
 from app.domain.entities.user_account import UserAccount
+from app.domain.repositories.event_registration_repository import (
+    EventRegistrationRepository,
+)
 from app.domain.repositories.event_repository import EventRepository
 from app.domain.repositories.session_attendee_repository import (
     SessionAttendeeRepository,
@@ -220,3 +232,105 @@ def test_concurrent_session_enrollments_return_one_success_and_one_capacity_conf
     assert occupancy["active"] == capacity
     assert repository.enroll.call_count == 2
     assert {call.args[2] for call in repository.enroll.call_args_list} == {21, 22}
+
+
+def test_registration_api_creates_and_lists_only_current_users_records(monkeypatch):
+    """Integrate registration routes and service while mocking their repository."""
+    user = UserAccount("member@example.test", "hash", "Alex", "Member", id=22)
+    auth_service = Mock()
+    auth_service.get_authenticated_user.return_value = user
+    repository = Mock(spec=EventRegistrationRepository)
+    repository.register.return_value = EventRegistrationRecord(
+        31, EVENT.id, 22, "registered"
+    )
+    repository.list_by_user.return_value = (
+        [
+            EventRegistrationDetails(31, "registered", EVENT.starts_at, EVENT),
+            EventRegistrationDetails(32, "cancelled", EVENT.starts_at, EVENT),
+        ],
+        2,
+    )
+    registration_service = EventRegistrationService(repository)
+    monkeypatch.setattr(decorators, "get_auth_service", lambda: auth_service)
+    monkeypatch.setattr(
+        event_routes,
+        "get_event_registration_service",
+        lambda: registration_service,
+    )
+
+    app = Flask(__name__)
+    app.config.update(TESTING=True)
+    app.register_blueprint(event_bp, url_prefix="/api/v1")
+    client = app.test_client()
+    client.set_cookie("access_token", "member-token")
+
+    created = client.post("/api/v1/events/12/registrations/me")
+    listed = client.get("/api/v1/registrations/me")
+
+    assert created.status_code == 201
+    assert created.json["registration"]["user_id"] == 22
+    assert listed.status_code == 200
+    assert [item["status"] for item in listed.json["registrations"]] == [
+        "registered",
+        "cancelled",
+    ]
+    assert all(item["event"]["id"] == EVENT.id for item in listed.json["registrations"])
+    repository.register.assert_called_once_with(12, 22)
+    repository.list_by_user.assert_called_once_with(22, 1, 20)
+
+
+def test_concurrent_event_registrations_return_one_success_and_one_capacity_conflict(
+    monkeypatch,
+):
+    """Send concurrent authenticated requests through routes with mock persistence."""
+    users = {
+        "token-a": UserAccount("a@example.test", "hash", "Alex", "One", id=21),
+        "token-b": UserAccount("b@example.test", "hash", "Blair", "Two", id=22),
+    }
+    auth_service = Mock()
+    auth_service.get_authenticated_user.side_effect = users.__getitem__
+    repository = Mock(spec=EventRegistrationRepository)
+    ready_barrier = Barrier(3)
+    capacity_lock = Lock()
+    capacity = 2
+    occupied = {"count": 1}
+
+    def register(event_id, user_id):
+        """Atomically check and consume the final seat in mock persistence."""
+        ready_barrier.wait(timeout=5)
+        with capacity_lock:
+            if occupied["count"] >= capacity:
+                raise EventCapacityExceededError("The event has no available seats.")
+            occupied["count"] += 1
+            return EventRegistrationRecord(user_id, event_id, user_id, "registered")
+
+    repository.register.side_effect = register
+    service = EventRegistrationService(repository)
+    monkeypatch.setattr(decorators, "get_auth_service", lambda: auth_service)
+    monkeypatch.setattr(event_routes, "get_event_registration_service", lambda: service)
+
+    app = Flask(__name__)
+    app.config.update(TESTING=True)
+    app.register_blueprint(event_bp, url_prefix="/api/v1")
+    clients = []
+    for token in users:
+        client = app.test_client()
+        client.set_cookie("access_token", token)
+        clients.append(client)
+
+    def send_registration(client):
+        """Send one authenticated self-registration request."""
+        response = client.post("/api/v1/events/12/registrations/me")
+        return response.status_code, response.json
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [executor.submit(send_registration, client) for client in clients]
+        ready_barrier.wait(timeout=5)
+        results = [future.result(timeout=5) for future in futures]
+
+    assert sorted(status for status, _ in results) == [201, 409]
+    conflict = next(payload for status, payload in results if status == 409)
+    assert conflict["error"]["code"] == "capacity_exceeded"
+    assert occupied["count"] == capacity
+    assert repository.register.call_count == 2
+    assert {call.args[1] for call in repository.register.call_args_list} == {21, 22}
