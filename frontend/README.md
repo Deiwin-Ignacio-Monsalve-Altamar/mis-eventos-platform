@@ -2,6 +2,9 @@
 
 Web application for discovering events, creating and managing events, managing sessions, and registering. It uses React 19, React Router, Context/Reducer, and Vite, and communicates with the Flask API through `src/api/`.
 
+For the static production build, same-origin API proxy, SPA fallback, and release
+verification, see the [deployment guide](../docs/deployment.md).
+
 ## Architecture and request flow
 
 - `src/pages/`: event catalog and details, authentication, profile, owned events, and registrations.

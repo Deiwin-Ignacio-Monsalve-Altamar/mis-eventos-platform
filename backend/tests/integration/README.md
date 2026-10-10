@@ -1,6 +1,6 @@
 # Integration tests
 
-Integration tests combine API routes and application services while mocking repositories and other infrastructure. They do not initialize SQLAlchemy, create a database, or require PostgreSQL, Docker, or network access. They do not verify actual SQL queries, migrations, constraints, or persistence behavior.
+Integration tests combine API routes and application services while mocking repositories and other infrastructure. The WSGI process test additionally starts Gunicorn on an ephemeral loopback port and uses an in-memory SQLite connection for readiness. The suite does not require PostgreSQL, Docker, or external network access. It does not verify PostgreSQL-specific queries, migrations against a live database, constraints, or provider connectivity.
 
 Run them separately from the `backend` directory:
 

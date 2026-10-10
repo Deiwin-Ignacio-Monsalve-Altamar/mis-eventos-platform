@@ -22,6 +22,7 @@ services:
       context: ./backend
     container_name: mis-eventos-backend
     restart: unless-stopped
+    command: ["python", "-m", "app"]
     environment:
       DATABASE_URL: postgresql+psycopg://mis_eventos:mis_eventos_dev@db:5432/mis_eventos
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:?Generate JWT_SECRET_KEY and set it in the root .env file}

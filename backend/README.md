@@ -2,6 +2,9 @@
 
 HTTP API for managing accounts, events, sessions, and registrations. It uses Python 3.12+, Flask, SQLAlchemy, PostgreSQL, and Alembic. Flasgger serves the OpenAPI specification.
 
+For the production WSGI command, static-host proxy contract, managed PostgreSQL
+configuration, and release checklist, see the [deployment guide](../docs/deployment.md).
+
 ## Architecture
 
 The backend separates HTTP handling, use cases, domain logic, and infrastructure. Flask routes serve as controllers; there is no separate controller layer.
