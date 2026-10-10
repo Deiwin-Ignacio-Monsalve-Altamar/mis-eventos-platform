@@ -12,10 +12,10 @@ RUN pip install --no-cache-dir "poetry==$POETRY_VERSION"
 
 COPY pyproject.toml poetry.lock* ./
 
-RUN poetry install --no-root
+RUN poetry install --only main --no-root
 
 COPY . .
 
 EXPOSE 5000
 
-CMD ["python", "-m", "app"]
+CMD ["gunicorn", "--config", "gunicorn.conf.py", "app.main:create_app()"]
