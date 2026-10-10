@@ -348,11 +348,11 @@ def show_service_urls() -> bool:
     if frontend_url is None or backend_url is None:
         print("ERROR: unable to resolve the frontend/backend Compose port mappings.")
         return False
-    health_url = f"{backend_url}/api/v1/health"
+    health_url = f"{backend_url}/api/v1/ready"
     docs_url = f"{backend_url}/apidocs/"
     all_ready = True
     for url, label in (
-        (health_url, "Backend health"),
+        (health_url, "Backend readiness"),
         (frontend_url, "Frontend"),
         (docs_url, "API documentation"),
     ):

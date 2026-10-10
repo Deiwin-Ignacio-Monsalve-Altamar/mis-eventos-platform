@@ -51,3 +51,4 @@ down: stop ## Alias for make stop.
 
 restart: ## Restart running Compose services and verify their health.
 	@$(PYTHON) scripts/dev.py restart
+

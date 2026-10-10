@@ -1,13 +1,12 @@
 """Configure Alembic migrations for the application's SQLAlchemy metadata."""
 
-import os
 from logging.config import fileConfig
 
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
 import app.infrastructure.database.models  # noqa: F401
-from app.config import Config
+from app.config import get_database_url
 from app.extensions import db
 
 # this is the Alembic Config object, which provides
@@ -21,8 +20,7 @@ if config.config_file_name is not None:
 
 # Importing this package registers its mapped model modules on db.metadata.
 
-database_url = os.environ.get("DATABASE_URL", Config.SQLALCHEMY_DATABASE_URI)
-config.set_main_option("sqlalchemy.url", database_url.replace("%", "%%"))
+config.set_main_option("sqlalchemy.url", get_database_url().replace("%", "%%"))
 
 target_metadata = db.metadata
 

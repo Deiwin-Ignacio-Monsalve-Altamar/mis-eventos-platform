@@ -2,7 +2,7 @@
 
 import assert from 'node:assert/strict'
 import { afterEach, test } from 'node:test'
-import { createEvent, deleteEvent, getEvent, getEventCapacity, getMyEvent, getMyEventDashboard, getSessionOccupancy, listEventSessions, listEvents, listMyEvents, updateEvent } from '../../src/api/events.js'
+import { createEvent, createEventSession, deleteEvent, deleteEventSession, getEvent, getEventCapacity, getMyEvent, getMyEventDashboard, getSessionOccupancy, listEventSessions, listEvents, listMyEvents, updateEvent, updateEventSession } from '../../src/api/events.js'
 import { cancelMyEventRegistration, findMyEventRegistration, getMyRegistrationSummary, listMyRegistrations, registerForEvent } from '../../src/api/registrations.js'
 
 const originalFetch = globalThis.fetch
@@ -67,6 +67,42 @@ test('event detail, sessions, and public capacity use their documented routes', 
     '/api/v1/events/42/sessions',
     '/api/v1/events/42/sessions/3/capacity',
   ])
+})
+
+/** Verify the session mutations use only the backend's existing nested routes. */
+test('session create, update, and delete use the existing event-scoped API contracts', async () => {
+  const calls = []
+  globalThis.fetch = async (url, options) => {
+    calls.push({ url, method: options.method, body: options.body })
+    return options.method === 'DELETE'
+      ? { ok: true, status: 204, json: async () => null }
+      : { ok: true, status: options.method === 'POST' ? 201 : 200, json: async () => ({ session: { id: 7, title: 'Opening talk' } }) }
+  }
+  const values = { title: 'Opening talk', capacity: 20, speaker_ids: [], version: 2 }
+
+  assert.deepEqual(await createEventSession(42, values), { id: 7, title: 'Opening talk' })
+  assert.deepEqual(await updateEventSession(42, 7, values), { id: 7, title: 'Opening talk' })
+  await deleteEventSession(42, 7)
+  assert.deepEqual(calls, [
+    { url: '/api/v1/events/42/sessions', method: 'POST', body: JSON.stringify(values) },
+    { url: '/api/v1/events/42/sessions/7', method: 'PATCH', body: JSON.stringify(values) },
+    { url: '/api/v1/events/42/sessions/7', method: 'DELETE', body: undefined },
+  ])
+})
+
+/** Preserve backend errors so failed session writes cannot appear successful. */
+test('session mutation failures remain API errors', async () => {
+  globalThis.fetch = async () => ({
+    ok: false,
+    status: 409,
+    json: async () => ({ error: { code: 'concurrency_conflict', message: 'Session changed.' } }),
+  })
+
+  await assert.rejects(updateEventSession(42, 7, { title: 'Stale', version: 1 }), (error) => {
+    assert.equal(error.status, 409)
+    assert.equal(error.code, 'concurrency_conflict')
+    return true
+  })
 })
 
 test('event creation posts the backend event fields to the authenticated route', async () => {

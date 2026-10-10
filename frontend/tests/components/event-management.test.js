@@ -19,6 +19,17 @@ const event = {
   version: 3,
 }
 
+const session = {
+  id: 7,
+  title: 'Opening talk',
+  description: 'Welcome to the event.',
+  starts_at: '2030-01-02T10:00:00Z',
+  ends_at: '2030-01-02T11:00:00Z',
+  capacity: 20,
+  speaker_ids: [],
+  version: 2,
+}
+
 /** Create the repository's existing Vite SSR harness for component checks. */
 async function createTestServer() {
   return createServer({
@@ -114,6 +125,121 @@ test('event details hide management controls until the owner-only endpoint confi
 
     assert.doesNotMatch(markup, /Editar evento/)
     assert.doesNotMatch(markup, /Eliminar evento/)
+  } finally {
+    await vite.close()
+  }
+})
+
+/** Require the authenticated owner-only endpoint before granting UI controls. */
+test('event management permission requires authentication and owner endpoint approval', async () => {
+  const vite = await createTestServer()
+  try {
+    const { canManageEvent } = await vite.ssrLoadModule('/src/utils/eventPermissions.js')
+    assert.equal(canManageEvent({ status: 'anonymous' }, 'owner'), false)
+    assert.equal(canManageEvent({ status: 'authenticated' }, 'checking'), false)
+    assert.equal(canManageEvent({ status: 'authenticated' }, 'denied'), false)
+    assert.equal(canManageEvent({ status: 'authenticated' }, 'owner'), true)
+  } finally {
+    await vite.close()
+  }
+})
+
+/** Render organizer actions and forms only in the manager view. */
+test('session editing controls and form are available only when management is enabled', async () => {
+  const vite = await createTestServer()
+  try {
+    const [{ default: SessionList }, { default: SessionForm }] = await Promise.all([
+      vite.ssrLoadModule('/src/components/SessionList.jsx'),
+      vite.ssrLoadModule('/src/components/SessionForm.jsx'),
+    ])
+    const editable = renderToString(createElement(SessionList, {
+      canManage: true,
+      eventId: event.id,
+      sessions: [session, { ...session, id: 8, title: 'Closing discussion' }],
+      status: 'success',
+      onEdit: () => {},
+      onDelete: () => {},
+    }))
+    const publicView = renderToString(createElement(SessionList, {
+      canManage: false,
+      eventId: event.id,
+      sessions: [session],
+      status: 'success',
+      onEdit: () => {},
+      onDelete: () => {},
+    }))
+    const form = renderToString(createElement(SessionForm, {
+      event,
+      session,
+      onCancel: () => {},
+      onSubmit: async () => {},
+    }))
+
+    assert.match(editable, /Editar sesión/)
+    assert.match(editable, /Eliminar sesión/)
+    assert.match(editable, /Closing discussion/)
+    assert.equal((editable.match(/class="session-item"/g) || []).length, 2)
+    assert.doesNotMatch(publicView, /Editar sesión/)
+    assert.doesNotMatch(publicView, /Eliminar sesión/)
+    assert.match(form, /value="Opening talk"/)
+    assert.match(form, /Guardar sesión/)
+  } finally {
+    await vite.close()
+  }
+})
+
+test('event editor dialog has an accessible title, close control, and bounded content region', async () => {
+  const vite = await createTestServer()
+  try {
+    const { default: EditorModal } = await vite.ssrLoadModule('/src/components/EditorModal.jsx')
+    const markup = renderToString(createElement(EditorModal, {
+      title: 'Editar evento',
+      artworkTitle: event.title,
+      onClose: () => {},
+      children: createElement('p', null, 'Formulario del evento'),
+    }))
+
+    assert.match(markup, /<dialog[^>]*aria-modal="true"/)
+    assert.match(markup, /aria-labelledby=/)
+    assert.match(markup, /aria-label="Cerrar ventana de edición"/)
+    assert.match(markup, /editor-modal-content/)
+    assert.match(markup, /Formulario del evento/)
+  } finally {
+    await vite.close()
+  }
+})
+
+/** Render the correct action for enrollment state and disable pending writes. */
+test('registration actions reflect active and cancelled states and block duplicate submissions', async () => {
+  const vite = await createTestServer()
+  try {
+    const { default: RegistrationActions } = await vite.ssrLoadModule('/src/components/RegistrationActions.jsx')
+    const registered = renderToString(createElement(RegistrationActions, {
+      authStatus: 'authenticated',
+      canRegister: true,
+      onCancel: () => {},
+      onRegister: () => {},
+      registration: { status: 'idle', registered: true },
+    }))
+    const cancelled = renderToString(createElement(RegistrationActions, {
+      authStatus: 'authenticated',
+      canRegister: true,
+      onCancel: () => {},
+      onRegister: () => {},
+      registration: { status: 'cancelled', registered: false },
+    }))
+    const pending = renderToString(createElement(RegistrationActions, {
+      authStatus: 'authenticated',
+      canRegister: true,
+      onCancel: () => {},
+      onRegister: () => {},
+      registration: { status: 'loading', registered: false },
+    }))
+
+    assert.match(registered, /Cancelar inscripción/)
+    assert.match(cancelled, /Inscribirme/)
+    assert.match(pending, /disabled=""/)
+    assert.match(pending, /Inscribiéndote/)
   } finally {
     await vite.close()
   }

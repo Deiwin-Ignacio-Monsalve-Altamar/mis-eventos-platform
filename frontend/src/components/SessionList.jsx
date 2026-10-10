@@ -8,7 +8,7 @@ import { EmptyMessage, LoadingMessage } from './RequestFeedback.jsx'
 import { formatEventDate, getSessionAvailability, sortSessions } from '../utils/eventPresentation.js'
 
 /** Render session cards in chronological order with available backend data. */
-export default function SessionList({ eventId, sessions, status, error, onRetry, refreshKey = 0 }) {
+export default function SessionList({ eventId, sessions, status, error, onRetry, refreshKey = 0, canManage = false, onEdit, onDelete, deletingId = null, busy = false }) {
   if (status === 'loading' || status === 'idle') {
     return <LoadingMessage>Cargando sesiones…</LoadingMessage>
   }
@@ -29,14 +29,24 @@ export default function SessionList({ eventId, sessions, status, error, onRetry,
   return (
     <ol className="session-list">
         {sortSessions(sessions).map((session, index) => (
-          <SessionItem eventId={eventId} index={index} key={`${session.id}:${refreshKey}`} session={session} />
+          <SessionItem
+            canManage={canManage}
+            busy={busy}
+            deleting={deletingId === session.id}
+            eventId={eventId}
+            index={index}
+            key={`${session.id}:${refreshKey}`}
+            onDelete={onDelete}
+            onEdit={onEdit}
+            session={session}
+          />
       ))}
     </ol>
   )
 }
 
-/** Load the current occupancy for one session without blocking its details. */
-function SessionItem({ eventId, index, session }) {
+/** Load one session's occupancy and render its optional organizer controls. */
+function SessionItem({ eventId, index, session, canManage, onEdit, onDelete, deleting, busy }) {
   const [occupancy, setOccupancy] = useState(null)
   const [occupancyUnavailable, setOccupancyUnavailable] = useState(false)
 
@@ -70,6 +80,14 @@ function SessionItem({ eventId, index, session }) {
           sessionCapacity={session.capacity}
           unavailable={occupancyUnavailable}
         />
+        {canManage && (
+          <div aria-label={`Administrar ${session.title}`} className="button-row session-management-actions">
+            <button className="button button-secondary" disabled={busy} onClick={() => onEdit(session)} type="button">Editar sesión</button>
+            <button className="button button-danger" disabled={busy} onClick={() => onDelete(session)} type="button">
+              {deleting ? 'Eliminando…' : 'Eliminar sesión'}
+            </button>
+          </div>
+        )}
       </div>
       <EventArtwork title={session.title} variant="session" />
     </li>

@@ -5,6 +5,8 @@ const EVENT_ERROR_MESSAGES = {
   capacity_exceeded: 'Ya no quedan cupos disponibles para este evento.',
   duplicate_registration: 'Ya tienes una inscripción activa para este evento.',
   event_unavailable: 'Este evento no admite nuevas inscripciones.',
+  forbidden: 'No tienes permiso para realizar esta acción.',
+  concurrency_conflict: 'La sesión cambió mientras la editabas. Vuelve a cargarla e inténtalo de nuevo.',
   network_error: 'No pudimos conectar con el servidor. Revisa tu conexión e inténtalo de nuevo.',
   not_found: 'No encontramos este evento. Puede que ya no esté disponible.',
   validation_error: 'No pudimos completar la solicitud. Revisa la información e inténtalo de nuevo.',

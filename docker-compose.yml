@@ -27,8 +27,22 @@ services:
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:?Generate JWT_SECRET_KEY and set it in the root .env file}
       JWT_ACCESS_TOKEN_TTL_SECONDS: ${JWT_ACCESS_TOKEN_TTL_SECONDS:-3600}
       JWT_COOKIE_SECURE: ${JWT_COOKIE_SECURE:-false}
+      SERVICE_NAME: mis-eventos-backend
+      APP_ENVIRONMENT: ${APP_ENVIRONMENT:-local}
+      APP_VERSION: ${APP_VERSION:-dev}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
     ports:
-      - "5000:5000"
+      - "127.0.0.1:5000:5000"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/api/v1/ready', timeout=2)"
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 20s
     depends_on:
       db:
         condition: service_healthy
@@ -40,6 +54,10 @@ services:
     restart: unless-stopped
     environment:
       API_PROXY_TARGET: http://backend:5000
+      APP_ENVIRONMENT: ${APP_ENVIRONMENT:-local}
+      APP_VERSION: ${APP_VERSION:-dev}
+      VITE_APP_ENVIRONMENT: ${APP_ENVIRONMENT:-local}
+      VITE_APP_VERSION: ${APP_VERSION:-dev}
     ports:
       - "5173:5173"
     depends_on:

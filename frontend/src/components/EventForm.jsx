@@ -44,21 +44,28 @@ export default function EventForm({
       {Object.keys(validationErrors).length > 0 && (
         <p className="field-error" role="alert">Revisa los campos señalados antes de guardar.</p>
       )}
-      <label htmlFor="event-title">
-        Nombre del evento
-        <input {...fieldProps('title')} autoComplete="off" id="event-title" maxLength="200" name="title" required defaultValue={event?.title || ''} />
-        {validationErrors.title && <span className="field-error" id="title-error">{validationErrors.title}</span>}
-      </label>
-      <label htmlFor="event-description">
-        Descripción <span className="field-hint">Opcional</span>
-        <textarea id="event-description" name="description" rows="4" defaultValue={event?.description || ''} />
-      </label>
-      <label htmlFor="event-location">
-        Lugar <span className="field-hint">Opcional; máximo 255 caracteres</span>
-        <input {...fieldProps('location')} id="event-location" maxLength="255" name="location" defaultValue={event?.location || ''} />
-        {validationErrors.location && <span className="field-error" id="location-error">{validationErrors.location}</span>}
-      </label>
-      <div className="form-columns">
+      <fieldset className="editor-form-group">
+        <legend>Información del evento</legend>
+        <div className="editor-form-grid">
+          <label className="editor-form-field-full" htmlFor="event-title">
+            Nombre del evento
+            <input {...fieldProps('title')} autoComplete="off" id="event-title" maxLength="200" name="title" required defaultValue={event?.title || ''} />
+            {validationErrors.title && <span className="field-error" id="title-error">{validationErrors.title}</span>}
+          </label>
+          <label className="editor-form-field-full" htmlFor="event-description">
+            Descripción <span className="field-hint">Opcional</span>
+            <textarea id="event-description" name="description" rows="4" defaultValue={event?.description || ''} />
+          </label>
+          <label className="editor-form-field-full" htmlFor="event-location">
+            Lugar <span className="field-hint">Opcional; máximo 255 caracteres</span>
+            <input {...fieldProps('location')} id="event-location" maxLength="255" name="location" defaultValue={event?.location || ''} />
+            {validationErrors.location && <span className="field-error" id="location-error">{validationErrors.location}</span>}
+          </label>
+        </div>
+      </fieldset>
+      <fieldset className="editor-form-group">
+        <legend>Fechas y capacidad</legend>
+        <div className="editor-form-grid">
         <label htmlFor="event-starts-at">
           Fecha y hora de inicio
           <input {...fieldProps('starts_at')} id="event-starts-at" name="starts_at" required type="datetime-local" defaultValue={event ? toLocalDateTimeValue(event.starts_at) : ''} />
@@ -69,8 +76,6 @@ export default function EventForm({
           <input {...fieldProps('ends_at')} id="event-ends-at" name="ends_at" required type="datetime-local" defaultValue={event ? toLocalDateTimeValue(event.ends_at) : ''} />
           {validationErrors.ends_at && <span className="field-error" id="ends_at-error">{validationErrors.ends_at}</span>}
         </label>
-      </div>
-      <div className="form-columns">
         <label htmlFor="event-capacity">
           Capacidad
           <input {...fieldProps('capacity')} id="event-capacity" min="1" name="capacity" required type="number" defaultValue={event?.capacity ?? ''} />
@@ -83,7 +88,8 @@ export default function EventForm({
           </select>
           {validationErrors.status && <span className="field-error" id="status-error">{validationErrors.status}</span>}
         </label>
-      </div>
+        </div>
+      </fieldset>
       <div className="button-row event-form-actions">
         <button className="button button-primary" disabled={isSubmitting} type="submit">
           {isSubmitting ? 'Guardando…' : isEditing ? 'Guardar cambios' : 'Crear evento'}
