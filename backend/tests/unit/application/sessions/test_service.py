@@ -7,7 +7,7 @@ from unittest.mock import Mock
 import pytest
 
 from app.application.sessions.service import SessionService
-from app.core.exceptions import NotFoundError, ValidationError
+from app.core.exceptions import AuthorizationError, NotFoundError, ValidationError
 from app.domain.entities.event_record import EventRecord
 from app.domain.entities.session_record import SessionRecord
 from app.domain.repositories.session_repository import SessionRepository
@@ -62,7 +62,7 @@ def valid_values(**updates):
 def test_create_and_list_and_get_session(setup_service):
     """Create, list, and retrieve sessions through event-scoped operations."""
     service, repository = setup_service
-    created = service.create(1, valid_values())
+    created = service.create(1, valid_values(), creator_id=7)
     repository.list_by_event.return_value = [created]
     repository.find_by_id.return_value = created
     assert created.title == "Talk"
@@ -77,25 +77,45 @@ def test_create_assigns_existing_speakers_by_identifier(setup_service):
     """Validate speaker IDs and pass only their association IDs to persistence."""
     service, repository = setup_service
 
-    created = service.create(1, valid_values(speaker_ids=[4]))
+    created = service.create(1, valid_values(speaker_ids=[4]), creator_id=7)
 
     assert created.speaker_ids == (4,)
     repository.speaker_ids_exist.assert_called_once_with((4,))
     assert repository.save.call_args.args[0].speaker_ids == (4,)
 
 
+@pytest.mark.parametrize("operation", ["create", "update", "delete"])
+def test_session_management_requires_the_event_creator(setup_service, operation):
+    """Reject non-owner writes before persisting or deleting a session."""
+    service, repository = setup_service
+    repository.find_by_id.return_value = RECORD
+
+    with pytest.raises(AuthorizationError, match="event creator"):
+        if operation == "create":
+            service.create(1, valid_values(), creator_id=8)
+        elif operation == "update":
+            service.update(1, 2, {"title": "Revised"}, 1, creator_id=8)
+        else:
+            service.delete(1, 2, creator_id=8)
+
+    repository.save.assert_not_called()
+    repository.delete.assert_not_called()
+
+
 def test_update_excludes_current_session_and_delete(setup_service):
     """Merge updates, exclude the current identifier from overlaps, and delete."""
     service, repository = setup_service
     repository.find_by_id.return_value = RECORD
-    updated = service.update(1, 2, {"title": "Revised"}, expected_version=1)
+    updated = service.update(
+        1, 2, {"title": "Revised"}, expected_version=1, creator_id=7
+    )
     assert updated.title == "Revised"
     assert updated.version == 2
     repository.find_overlapping.assert_called_once_with(
         1, RECORD.starts_at, RECORD.ends_at, 2
     )
     repository.delete.return_value = True
-    service.delete(1, 2)
+    service.delete(1, 2, creator_id=7)
     repository.delete.assert_called_once_with(1, 2)
 
 
@@ -117,7 +137,7 @@ def test_create_rejects_invalid_values_before_save(setup_service, changes):
     """Reject invalid fields without persisting a session."""
     service, repository = setup_service
     with pytest.raises(ValidationError):
-        service.create(1, valid_values(**changes))
+        service.create(1, valid_values(**changes), creator_id=7)
     repository.save.assert_not_called()
 
 
@@ -132,6 +152,7 @@ def test_create_rejects_end_after_event_schedule(setup_service):
                 starts_at="2030-01-01T17:00:00+00:00",
                 ends_at="2030-01-01T19:00:00+00:00",
             ),
+            creator_id=7,
         )
 
     repository.save.assert_not_called()
@@ -144,7 +165,7 @@ def test_update_rejects_nonexistent_speaker_without_saving(setup_service):
     repository.speaker_ids_exist.return_value = False
 
     with pytest.raises(ValidationError, match="speakers do not exist"):
-        service.update(1, 2, {"speaker_ids": [999]}, expected_version=1)
+        service.update(1, 2, {"speaker_ids": [999]}, expected_version=1, creator_id=7)
 
     repository.save.assert_not_called()
 
@@ -154,18 +175,18 @@ def test_rejects_missing_event_session_speaker_and_overlap(setup_service):
     service, repository = setup_service
     repository.find_event.return_value = None
     with pytest.raises(NotFoundError, match="Event not found"):
-        service.create(9, valid_values())
+        service.create(9, valid_values(), creator_id=7)
     repository.find_event.return_value = EVENT
     repository.speaker_ids_exist.return_value = False
     with pytest.raises(ValidationError, match="speakers"):
-        service.create(1, valid_values(speaker_ids=[55]))
+        service.create(1, valid_values(speaker_ids=[55]), creator_id=7)
     repository.speaker_ids_exist.return_value = True
     repository.find_overlapping.return_value = RECORD
     with pytest.raises(ValidationError, match="overlaps"):
-        service.create(1, valid_values())
+        service.create(1, valid_values(), creator_id=7)
     repository.find_by_id.return_value = RECORD
     with pytest.raises(ValidationError, match="overlaps"):
-        service.update(1, 2, {"title": "Change"}, expected_version=1)
+        service.update(1, 2, {"title": "Change"}, expected_version=1, creator_id=7)
 
 
 def test_consecutive_session_is_not_reported_as_overlap(setup_service):
@@ -177,5 +198,6 @@ def test_consecutive_session_is_not_reported_as_overlap(setup_service):
         valid_values(
             starts_at="2030-01-01T11:00:00+00:00", ends_at="2030-01-01T12:00:00+00:00"
         ),
+        creator_id=7,
     )
     repository.save.assert_called_once()

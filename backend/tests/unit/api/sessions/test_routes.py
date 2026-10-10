@@ -97,8 +97,11 @@ def test_session_crud_routes(session_client):
     ) == (201, 200, 200, 200, 204)
     assert fetched.json["session"]["speaker_ids"] == [4]
     assert fetched.json["session"]["version"] == RECORD.version
-    service.create.assert_called_once_with(1, body)
-    service.update.assert_called_once_with(1, 2, {"title": "Talk"}, 1)
+    assert deleted.data == b""
+    service.create.assert_called_once_with(1, body, creator_id=ACCOUNT.id)
+    service.update.assert_called_once_with(
+        1, 2, {"title": "Talk"}, 1, creator_id=ACCOUNT.id
+    )
 
 
 @pytest.mark.parametrize("method", ["post", "patch", "delete"])
@@ -201,6 +204,7 @@ def test_attendee_can_enroll_and_cancel_only_the_authenticated_identity(session_
 
     assert enrolled.status_code == 201
     assert cancelled.status_code == 204
+    assert cancelled.data == b""
     attendee_service.enroll.assert_called_once_with(1, 2, ACCOUNT.id)
     attendee_service.cancel.assert_called_once_with(1, 2, ACCOUNT.id)
 
@@ -283,6 +287,35 @@ def test_session_routes_map_remaining_application_errors(session_client):
         404,
     ]
     assert responses[2].json["error"]["code"] == "concurrency_conflict"
+
+
+def test_session_mutations_return_forbidden_for_non_owners(session_client):
+    """Translate service ownership failures for create, update, and delete."""
+    client, service, _ = session_client
+    add_cookie(client)
+    forbidden = AuthorizationError("Only the event creator can manage sessions.")
+    service.create.side_effect = forbidden
+    service.update.side_effect = forbidden
+    service.delete.side_effect = forbidden
+
+    responses = [
+        client.post(
+            "/api/v1/events/1/sessions",
+            json={
+                "title": "Talk",
+                "starts_at": "2030-01-01T10:00:00+00:00",
+                "ends_at": "2030-01-01T11:00:00+00:00",
+                "capacity": 20,
+            },
+        ),
+        client.patch(
+            "/api/v1/events/1/sessions/2", json={"title": "Talk", "version": 1}
+        ),
+        client.delete("/api/v1/events/1/sessions/2"),
+    ]
+
+    assert [response.status_code for response in responses] == [403, 403, 403]
+    assert all(response.json["error"]["code"] == "forbidden" for response in responses)
 
 
 def test_roster_rejects_non_owner_and_enrollment_maps_full_capacity(session_client):

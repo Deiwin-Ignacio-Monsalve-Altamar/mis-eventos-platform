@@ -2,7 +2,8 @@
 
 from datetime import UTC, datetime
 
-from app.core.exceptions import NotFoundError, ValidationError
+from app.core.exceptions import AuthorizationError, NotFoundError, ValidationError
+from app.domain.entities.event_record import EventRecord
 from app.domain.entities.session_record import SessionRecord
 from app.domain.repositories.session_repository import SessionRepository
 
@@ -23,9 +24,12 @@ class SessionService:
         """Set the persistence port used for session management."""
         self._repository = session_repository
 
-    def create(self, event_id: int, values: dict[str, object]) -> SessionRecord:
-        """Validate and create a session belonging to an existing event."""
+    def create(
+        self, event_id: int, values: dict[str, object], creator_id: int
+    ) -> SessionRecord:
+        """Validate and create a session for an event owned by the caller."""
         event = self._event(event_id)
+        self._require_creator(event, creator_id)
         record = self._validated(event_id, values, event, None)
         if self._repository.find_overlapping(
             event_id, record.starts_at, record.ends_at
@@ -52,9 +56,14 @@ class SessionService:
         session_id: int,
         values: dict[str, object],
         expected_version: object,
+        creator_id: int,
     ) -> SessionRecord:
-        """Merge, validate, and save editable fields for an existing session."""
-        existing = self.get(event_id, session_id)
+        """Merge and save session fields after checking event ownership."""
+        event = self._event(event_id)
+        self._require_creator(event, creator_id)
+        existing = self._repository.find_by_id(event_id, session_id)
+        if existing is None:
+            raise NotFoundError("Session not found for this event.")
         if (
             isinstance(expected_version, bool)
             or not isinstance(expected_version, int)
@@ -73,18 +82,25 @@ class SessionService:
             "version": existing.version,
         }
         merged.update(values)
-        record = self._validated(event_id, merged, self._event(event_id), session_id)
+        record = self._validated(event_id, merged, event, session_id)
         if self._repository.find_overlapping(
             event_id, record.starts_at, record.ends_at, session_id
         ):
             raise ValidationError("Session schedule overlaps another session.")
         return self._repository.save(record, expected_version)
 
-    def delete(self, event_id: int, session_id: int) -> None:
-        """Delete a session from its event without affecting related profiles."""
-        self._event(event_id)
+    def delete(self, event_id: int, session_id: int, creator_id: int) -> None:
+        """Delete an owned session without affecting related speaker profiles."""
+        event = self._event(event_id)
+        self._require_creator(event, creator_id)
         if not self._repository.delete(event_id, session_id):
             raise NotFoundError("Session not found for this event.")
+
+    @staticmethod
+    def _require_creator(event: EventRecord, creator_id: int) -> None:
+        """Reject session management by anyone other than the event creator."""
+        if event.created_by_id != creator_id:
+            raise AuthorizationError("Only the event creator can manage sessions.")
 
     def _event(self, event_id: int):
         """Load the parent event or raise a clear not-found error."""
