@@ -11,3 +11,4 @@ __pycache__/
 # Local development test and coverage artifacts
 reports/coverage/
 .coverage
+frontend/test-results/*
