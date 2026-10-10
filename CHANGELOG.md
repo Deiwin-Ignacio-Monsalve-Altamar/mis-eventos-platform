@@ -6,6 +6,7 @@ All notable changes to Mis Eventos are documented in this file.
 
 ### Added
 
+* Added structured backend JSON lifecycle and HTTP logs, request correlation IDs, Prometheus metrics, readiness/liveness endpoints, and local browser error/performance events.
 * Added root Makefile commands for environment checks, dependency setup, Docker Compose lifecycle, migrations, tests, lint, and combined coverage reporting.
 * Added `make stop` to stop and remove Compose containers and networks while preserving persistent volumes; `make down` remains an alias.
 * Added a local HTML dashboard combining real backend and frontend test and coverage results.
@@ -15,6 +16,7 @@ All notable changes to Mis Eventos are documented in this file.
 
 ### Changed
 
+* Kept application logs, local frontend telemetry, and backend `/metrics` instrumentation without an external monitoring stack in the local setup.
 * Expanded the README with first-time local setup and service startup instructions; `make run` is the primary startup command and `make up` remains an alias.
 * Updated shared buttons, navigation, form controls, cards, feedback, and responsive styling while preserving existing frontend routes and API behavior.
 * Documented frontend design tokens, accessibility, responsive conventions, and mocked test practices.

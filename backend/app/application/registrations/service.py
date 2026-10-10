@@ -9,6 +9,7 @@ from app.domain.entities.event_registration import EventRegistrationRecord
 from app.domain.repositories.event_registration_repository import (
     EventRegistrationRepository,
 )
+from app.observability.metrics import increment_business_metric
 
 DEFAULT_PAGE = 1
 DEFAULT_PAGE_SIZE = 20
@@ -27,7 +28,9 @@ class EventRegistrationService:
 
     def register(self, event_id: int, user_id: int) -> EventRegistrationRecord:
         """Create or reactivate the authenticated user's event registration."""
-        return self._repository.register(event_id, user_id)
+        registration = self._repository.register(event_id, user_id)
+        increment_business_metric("registration_completed")
+        return registration
 
     def cancel(self, event_id: int, user_id: int) -> None:
         """Cancel the authenticated user's registration or raise when absent."""

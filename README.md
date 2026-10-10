@@ -115,3 +115,69 @@ HTML report in the current run's `reports/coverage/backend/htmlcov-<run-id>/`
 directory, and a JSON summary. Each suite execution writes uniquely named test,
 coverage, and HTML artifacts so a failed run cannot reuse an earlier result.
 Running only one suite marks the other as “not run” in that execution's report.
+
+## Observability
+
+The backend writes structured JSON logs to stdout and exposes Prometheus
+metrics from the same Flask process. This lightweight instrumentation does not
+start or depend on a centralized monitoring stack. Docker Compose continues to
+show backend logs through `make logs`, and metrics can be inspected directly at
+`/metrics`.
+
+### Startup and health
+
+Backend lifecycle, readiness transitions, and HTTP access logs are emitted as
+one JSON record per line. The `service`, `environment`, and `version` labels
+come from `SERVICE_NAME`, `APP_ENVIRONMENT`, and `APP_VERSION`; `LOG_LEVEL`
+accepts standard Python levels. `LOG_LEVEL=INFO`, `APP_ENVIRONMENT=local`, and
+`APP_VERSION=dev` are the local defaults. Invalid log levels fall back to INFO
+with a warning. Startup errors identify the failing configuration, extension,
+route registration, or Swagger stage without printing configuration values.
+
+- `GET /api/v1/live` checks only that the Flask process responds.
+- `GET /api/v1/ready` validates the required JWT signing-key configuration and
+  executes a lightweight `SELECT 1` against PostgreSQL; it returns 503 when a
+  required check fails.
+- `GET /api/v1/health` is retained as the existing lightweight health route.
+- `GET /metrics` exposes Prometheus metrics and is excluded from HTTP request
+  counters to prevent scrape traffic from distorting application rates.
+
+The backend's host-published port is bound to loopback. `/metrics` is therefore
+available locally but is not exposed publicly. For startup or readiness
+failures, inspect `make logs` and `make status`. Database outages make
+readiness fail while liveness remains available.
+
+Verify the actual exported backend names with:
+
+```sh
+curl -sS http://localhost:5000/metrics | grep '^mis_eventos_'
+```
+
+The backend exports these real Prometheus metrics:
+
+- `mis_eventos_http_requests_total{method,route,status_code}`
+- `mis_eventos_http_request_duration_seconds{method,route}` (histogram)
+- `mis_eventos_http_requests_in_progress`
+- `mis_eventos_business_events_created_total`
+- `mis_eventos_business_registrations_total`
+
+The business counters increment only after a successful repository operation;
+the registration counter includes successful new registrations and
+reactivations. HTTP labels use the Flask route template, not raw paths or IDs.
+There is no separate HTTP error counter because errors can be queried from the
+request counter's `status_code` label.
+
+### Frontend telemetry boundary
+
+The frontend writes safe, bounded JSON telemetry events to browser console
+levels: `mis_eventos_frontend_errors_total`,
+`mis_eventos_frontend_api_errors_total`,
+`mis_eventos_frontend_page_load_duration_seconds`,
+`mis_eventos_frontend_api_request_duration_seconds`, and
+`mis_eventos_frontend_web_vitals` (currently LCP and CLS where supported).
+These identifiers are **console event names, not Prometheus metrics**. API
+errors exclude paths, query strings, request/response bodies, credentials, and
+error messages. Duplicate API errors are suppressed in the global rejection
+handler. The frontend telemetry is local to the browser console; there is no
+browser-to-server ingestion endpoint, so frontend telemetry is not centrally
+collected.

@@ -51,6 +51,32 @@ export async function listEventSessions(eventId) {
   return response.sessions
 }
 
+/** Create a scheduled session through the existing nested event route. */
+export async function createEventSession(eventId, session) {
+  const response = await request(`/events/${encodeURIComponent(eventId)}/sessions`, {
+    method: 'POST',
+    body: session,
+  })
+  return response.session
+}
+
+/** Update a session with the version required by the backend contract. */
+export async function updateEventSession(eventId, sessionId, session) {
+  const response = await request(
+    `/events/${encodeURIComponent(eventId)}/sessions/${encodeURIComponent(sessionId)}`,
+    { method: 'PATCH', body: session },
+  )
+  return response.session
+}
+
+/** Delete one session through its existing nested event route. */
+export async function deleteEventSession(eventId, sessionId) {
+  return request(
+    `/events/${encodeURIComponent(eventId)}/sessions/${encodeURIComponent(sessionId)}`,
+    { method: 'DELETE' },
+  )
+}
+
 /** Read the backend's current session capacity and occupancy snapshot. */
 export async function getSessionOccupancy(eventId, sessionId) {
   return request(

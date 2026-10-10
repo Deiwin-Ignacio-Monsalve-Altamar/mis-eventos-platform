@@ -7,6 +7,7 @@ from app.application.pagination import positive_integer
 from app.core.exceptions import AuthorizationError, NotFoundError, ValidationError
 from app.domain.entities.event_record import EventRecord
 from app.domain.repositories.event_repository import EventRepository
+from app.observability.metrics import increment_business_metric
 
 EVENT_STATUSES = {"draft", "published", "cancelled", "completed"}
 DEFAULT_PAGE = 1
@@ -35,9 +36,11 @@ class EventService:
     def create(self, values: dict[str, object], creator_id: int) -> EventRecord:
         """Validate and persist an event attributed to its authenticated creator."""
         event_values = self._validated_values(values)
-        return self._event_repository.save(
+        event = self._event_repository.save(
             EventRecord(created_by_id=creator_id, **event_values)
         )
+        increment_business_metric("event_created")
+        return event
 
     def update(
         self,

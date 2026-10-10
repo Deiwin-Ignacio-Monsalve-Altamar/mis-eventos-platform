@@ -1,18 +1,24 @@
 /** Present an API-backed event, its sessions, and the supported registration action. */
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useReducer, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
-import { getEventCapacity, getMyEvent } from '../api/events.js'
+import { createEventSession, deleteEventSession, getEventCapacity, getMyEvent, updateEventSession } from '../api/events.js'
 import { cancelMyEventRegistration, findMyEventRegistration, registerForEvent } from '../api/registrations.js'
 import EventForm from '../components/EventForm.jsx'
 import EventArtwork from '../components/EventArtwork.jsx'
+import EditorModal from '../components/EditorModal.jsx'
 import EventErrorMessage from '../components/EventErrorMessage.jsx'
 import RegistrationNotice from '../components/RegistrationNotice.jsx'
 import { ErrorMessage, LoadingMessage } from '../components/RequestFeedback.jsx'
 import SessionList from '../components/SessionList.jsx'
+import SessionForm from '../components/SessionForm.jsx'
+import RegistrationActions from '../components/RegistrationActions.jsx'
 import useAppState from '../state/useAppState.js'
 import { formatEventDate, getEventStatusLabel, isEventOpenForRegistration } from '../utils/eventPresentation.js'
 import { confirmAndDeleteEvent } from '../utils/eventDeletion.js'
+import { canManageEvent } from '../utils/eventPermissions.js'
+import { initialRegistrationState, registrationReducer } from '../state/registrationReducer.js'
+import { getEventEditorLocation } from '../utils/eventEditorLocation.js'
 
 /** Load event data and manage the real self-service registration flow. */
 export default function EventDetailsPage() {
@@ -22,21 +28,28 @@ export default function EventDetailsPage() {
   const { event, status, error, sessions, sessionsStatus, sessionsError } = selectedEvent
   const location = useLocation()
   const navigate = useNavigate()
-  const [registration, setRegistration] = useState({ status: 'idle', error: null, registered: false })
-  const [registrationCheck, setRegistrationCheck] = useState('idle')
-  const [editing, setEditing] = useState(false)
+  const [registrationState, dispatchRegistration] = useReducer(registrationReducer, initialRegistrationState)
   const [eventAction, setEventAction] = useState({ status: 'idle', error: null })
   const [ownerResult, setOwnerResult] = useState(null)
   const [availabilityRevision, setAvailabilityRevision] = useState(0)
+  const [registrationRevision, setRegistrationRevision] = useState(0)
   const [capacityQuery, setCapacityQuery] = useState(null)
+  const [sessionEditor, setSessionEditor] = useState(undefined)
+  const [sessionAction, setSessionAction] = useState({ status: 'idle', error: null, deletingId: null })
   const registrationRequest = useRef(false)
+  const sessionRequest = useRef(false)
   const ownerRequestKey = `${auth.status}:${auth.user?.id ?? ''}:${event?.id ?? ''}`
   const ownerAccess = ownerResult?.key === ownerRequestKey ? ownerResult.status : 'checking'
   const currentCapacityQuery = capacityQuery?.eventId === event?.id
     && capacityQuery?.revision === availabilityRevision
     ? capacityQuery
     : null
-  const isEditing = editing || (ownerAccess === 'owner' && new URLSearchParams(location.search).get('edit') === '1')
+  const isOwner = canManageEvent(auth, ownerAccess)
+  const isEditing = isOwner && new URLSearchParams(location.search).get('edit') === '1'
+  const currentRegistrationKey = `${event?.id ?? ''}:${auth.user?.id ?? 'anonymous'}`
+  const registration = registrationState.eventKey === currentRegistrationKey
+    ? registrationState
+    : initialRegistrationState
 
   useEffect(() => {
     if (!/^\d+$/.test(eventId || '') || Number(eventId) < 1) return
@@ -73,23 +86,21 @@ export default function EventDetailsPage() {
 
   useEffect(() => {
     let active = true
-    if (!event || auth.status !== 'authenticated') return () => { active = false }
+    if (!event?.id) return undefined
+    dispatchRegistration({ type: 'check/start', eventKey: currentRegistrationKey })
+    if (auth.status !== 'authenticated') {
+      dispatchRegistration({ type: 'check/complete', registration: null })
+      return () => { active = false }
+    }
     findMyEventRegistration(event.id)
       .then((result) => {
-        if (active) {
-          setRegistration((current) => ({
-            ...current,
-            registered: result?.status === 'registered',
-            status: result?.status === 'cancelled' ? 'cancelled' : 'idle',
-          }))
-          setRegistrationCheck('complete')
-        }
+        if (active) dispatchRegistration({ type: 'check/complete', registration: result })
       })
       .catch(() => {
-        if (active) setRegistrationCheck('error')
+        if (active) dispatchRegistration({ type: 'check/failure' })
       })
     return () => { active = false }
-  }, [auth.status, event])
+  }, [auth.status, auth.user?.id, currentRegistrationKey, event?.id, registrationRevision])
 
   if (!/^\d+$/.test(eventId || '') || Number(eventId) < 1) {
     return <EventUnavailable onBack={() => navigate('/events')} />
@@ -111,8 +122,7 @@ export default function EventDetailsPage() {
     setEventAction({ status: 'saving', error: null })
     try {
       await saveEventChanges(event.id, { ...values, version: event.version })
-      setEditing(false)
-      navigate(`/events/${event.id}`, { replace: true })
+      navigate(getEventEditorLocation(location.pathname, location.search, false), { replace: true })
       setEventAction({ status: 'saved', error: null })
     } catch (requestError) {
       setEventAction({ status: 'error', error: requestError })
@@ -157,6 +167,11 @@ export default function EventDetailsPage() {
     }
   }
 
+  function closeEventEditor() {
+    navigate(getEventEditorLocation(location.pathname, location.search, false), { replace: true })
+    setEventAction({ status: 'idle', error: null })
+  }
+
   async function handleRegistration() {
     if (registrationRequest.current || registration.status === 'loading') return
     if (auth.status !== 'authenticated') {
@@ -164,16 +179,16 @@ export default function EventDetailsPage() {
       return
     }
     registrationRequest.current = true
-    setRegistration({ status: 'loading', error: null, registered: false })
+    dispatchRegistration({ type: 'register/start', eventKey: currentRegistrationKey })
     try {
       await registerForEvent(event.id)
       setAvailabilityRevision((revision) => revision + 1)
-      setRegistration({ status: 'success', error: null, registered: true })
+      dispatchRegistration({ type: 'register/success', eventKey: currentRegistrationKey })
     } catch (requestError) {
       if (requestError.code === 'duplicate_registration') {
-        setRegistration({ status: 'duplicate', error: null, registered: true })
+        dispatchRegistration({ type: 'register/duplicate', eventKey: currentRegistrationKey })
       } else {
-        setRegistration({ status: 'error', error: requestError, registered: false })
+        dispatchRegistration({ type: 'register/failure', error: requestError, eventKey: currentRegistrationKey })
       }
     } finally {
       registrationRequest.current = false
@@ -184,15 +199,53 @@ export default function EventDetailsPage() {
     if (registrationRequest.current || !registration.registered) return
     if (!window.confirm(`¿Cancelar tu inscripción a “${event.title}”? La plaza podría quedar disponible para otra persona.`)) return
     registrationRequest.current = true
-    setRegistration({ status: 'cancelling', error: null, registered: true })
+    dispatchRegistration({ type: 'cancel/start', eventKey: currentRegistrationKey })
     try {
       await cancelMyEventRegistration(event.id)
       setAvailabilityRevision((revision) => revision + 1)
-      setRegistration({ status: 'cancelled', error: null, registered: false })
+      dispatchRegistration({ type: 'cancel/success', eventKey: currentRegistrationKey })
     } catch (requestError) {
-      setRegistration({ status: 'error', error: requestError, registered: true })
+      dispatchRegistration({ type: 'cancel/failure', error: requestError, eventKey: currentRegistrationKey })
     } finally {
       registrationRequest.current = false
+    }
+  }
+
+  async function handleSaveSession(values) {
+    if (sessionRequest.current) return
+    sessionRequest.current = true
+    setSessionAction({ status: 'saving', error: null, deletingId: null })
+    try {
+      if (sessionEditor) {
+        await updateEventSession(event.id, sessionEditor.id, values)
+      } else {
+        await createEventSession(event.id, values)
+      }
+      setSessionEditor(undefined)
+      setAvailabilityRevision((revision) => revision + 1)
+      await loadEventSessions(event.id)
+      setSessionAction({ status: 'saved', error: null, deletingId: null })
+    } catch (requestError) {
+      setSessionAction({ status: 'error', error: requestError, deletingId: null })
+    } finally {
+      sessionRequest.current = false
+    }
+  }
+
+  async function handleDeleteSession(session) {
+    if (sessionRequest.current) return
+    if (!window.confirm(`¿Eliminar la sesión “${session.title}”? Esta acción no se puede deshacer.`)) return
+    sessionRequest.current = true
+    setSessionAction({ status: 'deleting', error: null, deletingId: session.id })
+    try {
+      await deleteEventSession(event.id, session.id)
+      setAvailabilityRevision((revision) => revision + 1)
+      await loadEventSessions(event.id)
+      setSessionAction({ status: 'saved', error: null, deletingId: null })
+    } catch (requestError) {
+      setSessionAction({ status: 'error', error: requestError, deletingId: null })
+    } finally {
+      sessionRequest.current = false
     }
   }
 
@@ -217,31 +270,16 @@ export default function EventDetailsPage() {
                   : 'Consultando cupos disponibles…'}
             </dd></div>
           </dl>
-          {auth.status === 'authenticated' && ownerAccess.status === 'owner' && (
+          {isOwner && (
             <section aria-label="Administrar evento" className="event-management">
-              {isEditing ? (
-                <div className="event-edit-panel">
-                  <h2>Editar evento</h2>
-                  <EventForm
-                    error={eventAction.error}
-                    event={event}
-                    isSubmitting={eventAction.status === 'saving'}
-                    onCancel={() => {
-                      setEditing(false)
-                      navigate(`/events/${event.id}`, { replace: true })
-                      setEventAction({ status: 'idle', error: null })
-                    }}
-                    onSubmit={handleSaveEvent}
-                  />
-                </div>
-              ) : (
+              {!isEditing && (
                 <div className="button-row event-management-actions">
                   <button
                     className="button button-secondary"
                     disabled={eventAction.status === 'deleting'}
                     onClick={() => {
                       setEventAction({ status: 'idle', error: null })
-                      setEditing(true)
+                      navigate(getEventEditorLocation(location.pathname, location.search, true))
                     }}
                     type="button"
                   >
@@ -267,6 +305,17 @@ export default function EventDetailsPage() {
               )}
               {eventAction.status === 'saved' && <p className="feedback feedback-success" role="status">Los cambios quedaron guardados.</p>}
               {eventAction.status === 'error' && !isEditing && <ErrorMessage error={eventAction.error} />}
+              {isEditing && (
+                <EditorModal artworkTitle={event.title} onClose={closeEventEditor} title="Editar evento">
+                  <EventForm
+                    error={eventAction.error}
+                    event={event}
+                    isSubmitting={eventAction.status === 'saving'}
+                    onCancel={closeEventEditor}
+                    onSubmit={handleSaveEvent}
+                  />
+                </EditorModal>
+              )}
             </section>
           )}
           {auth.status === 'anonymous' && (
@@ -279,22 +328,13 @@ export default function EventDetailsPage() {
           {(canRegister || registration.registered || registration.status === 'cancelled') && (
             <div className="event-registration">
               <RegistrationNotice registration={registration} />
-              {!registration.registered && registration.status !== 'cancelled' && canRegister && (
-                <button
-                  aria-busy={registration.status === 'loading'}
-                  className="button button-primary"
-                  disabled={registration.status === 'loading' || auth.status === 'loading' || (auth.status === 'authenticated' && registrationCheck === 'idle')}
-                  onClick={handleRegistration}
-                  type="button"
-                >
-                  {registration.status === 'loading' ? 'Inscribiéndote…' : 'Inscribirme al evento'}
-                </button>
-              )}
-              {registration.registered && (
-                <button className="button button-secondary" disabled={registration.status === 'cancelling'} onClick={handleCancelRegistration} type="button">
-                  {registration.status === 'cancelling' ? 'Cancelando inscripción…' : 'Cancelar inscripción'}
-                </button>
-              )}
+              <RegistrationActions
+                authStatus={auth.status}
+                canRegister={canRegister}
+                onCancel={handleCancelRegistration}
+                onRegister={handleRegistration}
+                registration={registration}
+              />
               {registration.status === 'error' && (
                 <>
                   <EventErrorMessage error={registration.error} />
@@ -305,7 +345,13 @@ export default function EventDetailsPage() {
                   )}
                 </>
               )}
-              {registrationCheck === 'error' && <p className="event-neutral-note">No pudimos consultar tus inscripciones. El servidor verificará tu estado al intentar inscribirte.</p>}
+              {registration.status === 'checking' && auth.status === 'authenticated' && <p className="event-neutral-note">Consultando tu inscripción…</p>}
+              {registration.status === 'check-error' && (
+                <div>
+                  <p className="event-neutral-note">No pudimos consultar tu inscripción. Inténtalo de nuevo antes de continuar.</p>
+                  <button className="button button-secondary" onClick={() => setRegistrationRevision((revision) => revision + 1)} type="button">Volver a consultar</button>
+                </div>
+              )}
             </div>
           )}
           {!canRegister && !registration.registered && <p className="event-neutral-note">Este evento no está aceptando inscripciones.</p>}
@@ -313,10 +359,50 @@ export default function EventDetailsPage() {
       </article>
 
       <section aria-labelledby="sessions-heading" className="event-sessions-section">
-        <header><p className="eyebrow">La agenda</p><h2 id="sessions-heading">Sesiones del evento</h2></header>
+        <header>
+          <div><p className="eyebrow">La agenda</p><h2 id="sessions-heading">Sesiones del evento</h2></div>
+          {isOwner && sessionEditor === undefined && (
+            <button className="button button-secondary" disabled={sessionAction.status === 'saving' || sessionAction.status === 'deleting'} onClick={() => {
+              setSessionAction({ status: 'idle', error: null, deletingId: null })
+              setSessionEditor(null)
+            }} type="button">Agregar sesión</button>
+          )}
+        </header>
+        {isOwner && sessionEditor !== undefined && (
+          <EditorModal
+            artworkTitle={sessionEditor?.title || event.title}
+            onClose={() => {
+              setSessionEditor(undefined)
+              setSessionAction({ status: 'idle', error: null, deletingId: null })
+            }}
+            title={sessionEditor ? 'Editar sesión' : 'Agregar sesión'}
+          >
+            <SessionForm
+              error={sessionAction.status === 'error' ? sessionAction.error : null}
+              event={event}
+              isSubmitting={sessionAction.status === 'saving' || sessionAction.status === 'deleting'}
+              onCancel={() => {
+                setSessionEditor(undefined)
+                setSessionAction({ status: 'idle', error: null, deletingId: null })
+              }}
+              onSubmit={handleSaveSession}
+              session={sessionEditor || null}
+            />
+          </EditorModal>
+        )}
+        {sessionAction.status === 'saved' && <p className="feedback feedback-success" role="status">Los cambios de la sesión quedaron guardados.</p>}
+        {sessionAction.status === 'error' && sessionEditor === undefined && <EventErrorMessage error={sessionAction.error} />}
         <SessionList
+          busy={sessionAction.status === 'saving' || sessionAction.status === 'deleting'}
+          canManage={isOwner}
+          deletingId={sessionAction.deletingId}
           error={sessionsError}
           eventId={event.id}
+          onDelete={handleDeleteSession}
+          onEdit={(session) => {
+            setSessionAction({ status: 'idle', error: null, deletingId: null })
+            setSessionEditor(session)
+          }}
           onRetry={() => loadEventSessions(event.id)}
           sessions={sessions}
           status={sessionsStatus}
