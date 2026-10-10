@@ -12,3 +12,4 @@ __pycache__/
 reports/coverage/
 .coverage
 frontend/test-results/*
+frontend/playwright-report/
