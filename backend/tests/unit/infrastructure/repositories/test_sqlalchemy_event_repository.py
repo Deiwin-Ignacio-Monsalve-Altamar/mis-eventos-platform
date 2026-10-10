@@ -11,6 +11,7 @@ from sqlalchemy.orm.exc import StaleDataError
 from app.core.exceptions import (
     AuthorizationError,
     ConcurrencyConflictError,
+    NotFoundError,
     RelatedRecordsError,
     ValidationError,
 )
@@ -387,3 +388,102 @@ def test_owner_event_query_always_filters_by_creator():
     statement = session.scalar.call_args.args[0]
     assert "events.created_by_id" in str(statement.compile())
     assert set(statement.compile().params.values()) == {5, 99}
+
+
+def test_find_by_id_returns_none_when_event_is_missing():
+    """Return no domain event when SQLAlchemy cannot find the requested row."""
+    session = Mock(spec=Session)
+    session.get.return_value = None
+    repository = SQLAlchemyEventRepository(session)
+
+    assert repository.find_by_id(404) is None
+
+
+def test_create_persists_event_and_maps_generated_identifier():
+    """Persist a new event record and map the database-generated identifier."""
+    session = Mock(spec=Session)
+    session.commit.side_effect = lambda: setattr(
+        session.add.call_args.args[0], "id", 42
+    )
+    repository = SQLAlchemyEventRepository(session)
+    starts_at = datetime(2030, 1, 1, 10, tzinfo=UTC)
+    ends_at = datetime(2030, 1, 1, 12, tzinfo=UTC)
+    event = EventRecord(
+        id=None,
+        title="Test event",
+        description="Description",
+        location="Auditorium",
+        starts_at=starts_at,
+        ends_at=ends_at,
+        capacity=30,
+        status="draft",
+        created_by_id=8,
+    )
+
+    saved = repository.save(event)
+
+    row = session.add.call_args.args[0]
+    assert row.id == 42
+    assert row.title == "Test event"
+    assert row.created_by_id == 8
+    assert saved.id == 42
+    assert saved.location == "Auditorium"
+    session.commit.assert_called_once()
+    session.rollback.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "model, owner_id, expected_version, error_type, message",
+    [
+        (None, 8, 1, NotFoundError, "no longer exists"),
+        (
+            SimpleNamespace(created_by_id=8),
+            None,
+            1,
+            AuthorizationError,
+            "authenticated event owner",
+        ),
+        (
+            SimpleNamespace(created_by_id=8),
+            8,
+            None,
+            ValidationError,
+            "resource version is required",
+        ),
+    ],
+)
+def test_update_rejects_missing_owner_or_version_before_writing(
+    model, owner_id, expected_version, error_type, message
+):
+    """Reject incomplete update context before mutating or committing an event."""
+    session = Mock(spec=Session)
+    session.scalar.return_value = model
+    repository = SQLAlchemyEventRepository(session)
+    event = EventRecord(
+        id=7,
+        title="Update",
+        starts_at=datetime(2030, 1, 1, 10, tzinfo=UTC),
+        ends_at=datetime(2030, 1, 1, 12, tzinfo=UTC),
+        capacity=30,
+        created_by_id=8,
+    )
+
+    with pytest.raises(error_type, match=message):
+        repository.save(event, expected_version=expected_version, owner_id=owner_id)
+
+    session.add.assert_not_called()
+    session.commit.assert_not_called()
+
+
+def test_delete_returns_false_for_missing_event_and_commits_owned_empty_event():
+    """Treat a missing row as absent and commit deletion of an owned empty event."""
+    session = Mock(spec=Session)
+    row = SimpleNamespace(created_by_id=8, registrations=[], sessions=[], speakers=[])
+    session.scalar.side_effect = [None, row]
+    repository = SQLAlchemyEventRepository(session)
+
+    assert repository.delete(7, 8) is False
+    assert repository.delete(7, 8) is True
+
+    session.delete.assert_called_once_with(row)
+    session.commit.assert_called_once()

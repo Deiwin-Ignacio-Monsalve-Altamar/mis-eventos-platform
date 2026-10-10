@@ -13,6 +13,7 @@ from app.core.exceptions import (
     AuthorizationError,
     CapacityExceededError,
     ConcurrencyConflictError,
+    DuplicateRegistrationError,
     NotFoundError,
     ValidationError,
 )
@@ -218,6 +219,70 @@ def test_capacity_and_attendee_roster_endpoints(session_client):
     assert roster.status_code == 200
     assert roster.json["attendees"][0]["user_id"] == 21
     attendee_service.list_attendees.assert_called_once_with(1, 2, ACCOUNT.id)
+
+
+@pytest.mark.parametrize("version", [0, -1, True, "1", None])
+def test_update_rejects_non_positive_or_non_integer_versions(session_client, version):
+    """Reject invalid optimistic-lock versions before calling the service."""
+    client, service, _ = session_client
+    add_cookie(client)
+
+    response = client.patch(
+        "/api/v1/events/1/sessions/2", json={"title": "Talk", "version": version}
+    )
+
+    assert response.status_code == 400
+    assert response.json["error"]["code"] == "invalid_request"
+    service.update.assert_not_called()
+
+
+def test_session_routes_map_remaining_application_errors(session_client):
+    """Translate session lookup, concurrency, enrollment, and permission failures."""
+    client, service, _ = session_client
+    attendee_service = service.attendee_service
+    add_cookie(client)
+    service.create.side_effect = NotFoundError("Event not found.")
+    service.list_by_event.side_effect = NotFoundError("Event not found.")
+    service.update.side_effect = ConcurrencyConflictError("Stale session.", 3)
+    service.delete.side_effect = NotFoundError("Session not found.")
+    attendee_service.list_attendees.side_effect = AuthorizationError("Creator only.")
+    attendee_service.get_occupancy.side_effect = NotFoundError("Session not found.")
+    attendee_service.enroll.side_effect = [
+        CapacityExceededError("Session is full."),
+        DuplicateRegistrationError("Already enrolled."),
+        ValidationError("Event enrollment is required."),
+        NotFoundError("Session not found."),
+    ]
+    attendee_service.cancel.side_effect = NotFoundError("Session not found.")
+
+    responses = [
+        client.post("/api/v1/events/1/sessions", json={"title": "Talk"}),
+        client.get("/api/v1/events/1/sessions"),
+        client.patch("/api/v1/events/1/sessions/2", json={"version": 1}),
+        client.delete("/api/v1/events/1/sessions/2"),
+        client.get("/api/v1/events/1/sessions/2/attendees"),
+        client.get("/api/v1/events/1/sessions/2/capacity"),
+        client.post("/api/v1/events/1/sessions/2/attendees"),
+        client.post("/api/v1/events/1/sessions/2/attendees"),
+        client.post("/api/v1/events/1/sessions/2/attendees"),
+        client.post("/api/v1/events/1/sessions/2/attendees"),
+        client.delete("/api/v1/events/1/sessions/2/attendees/me"),
+    ]
+
+    assert [response.status_code for response in responses] == [
+        404,
+        404,
+        409,
+        404,
+        403,
+        404,
+        409,
+        409,
+        400,
+        404,
+        404,
+    ]
+    assert responses[2].json["error"]["code"] == "concurrency_conflict"
 
 
 def test_roster_rejects_non_owner_and_enrollment_maps_full_capacity(session_client):

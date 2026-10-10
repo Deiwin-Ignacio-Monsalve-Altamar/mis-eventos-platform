@@ -7,3 +7,7 @@ __pycache__/
 .env
 .env.*
 !.env.example
+
+# Local development test and coverage artifacts
+reports/coverage/
+.coverage

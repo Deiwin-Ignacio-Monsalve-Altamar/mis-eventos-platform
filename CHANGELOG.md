@@ -6,12 +6,16 @@ All notable changes to Mis Eventos are documented in this file.
 
 ### Added
 
+* Added root Makefile commands for environment checks, dependency setup, Docker Compose lifecycle, migrations, tests, lint, and combined coverage reporting.
+* Added `make stop` to stop and remove Compose containers and networks while preserving persistent volumes; `make down` remains an alias.
+* Added a local HTML dashboard combining real backend and frontend test and coverage results.
 * Documented backend API endpoints with OpenAPI 3.0.3 and enabled interactive Swagger UI for local development.
 * Added a shared festive frontend visual system with purple, pink, yellow, lavender, and turquoise accents across events, authentication, profile, and forms.
 * Added accessible session availability labels for available, full, pending, and unknown capacity states.
 
 ### Changed
 
+* Expanded the README with first-time local setup and service startup instructions; `make run` is the primary startup command and `make up` remains an alias.
 * Updated shared buttons, navigation, form controls, cards, feedback, and responsive styling while preserving existing frontend routes and API behavior.
 * Documented frontend design tokens, accessibility, responsive conventions, and mocked test practices.
 

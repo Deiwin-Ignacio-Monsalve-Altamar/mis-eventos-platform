@@ -309,3 +309,66 @@ def test_delete_rolls_back_if_session_does_not_belong_to_event():
     session.delete.assert_not_called()
     session.commit.assert_not_called()
     session.rollback.assert_called_once()
+
+
+def test_create_session_persists_without_speakers_when_schedule_is_valid():
+    """Save a new session without speaker links inside its locked event schedule."""
+    session = Mock()
+    session.scalar.side_effect = [event_model(), None]
+    session.commit.side_effect = lambda: setattr(
+        session.add.call_args.args[0], "id", 40
+    )
+    repository = SQLAlchemySessionRepository(session)
+    record = SessionRecord(None, 3, "New session", None, "start", "end", 25)
+
+    saved = repository.save(record)
+
+    assert saved.id == 40
+    assert saved.title == "New session"
+    assert saved.speaker_ids == ()
+    session.add.assert_called_once()
+    session.commit.assert_called_once()
+    session.rollback.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "event_row, session_row, expected_version, message",
+    [
+        (None, None, None, "Event not found"),
+        (event_model(), None, None, "no longer exists"),
+        (
+            event_model(),
+            Mock(id=14, event_id=3, version=1),
+            None,
+            "version is required",
+        ),
+    ],
+)
+def test_save_rejects_missing_event_session_or_update_version(
+    event_row, session_row, expected_version, message
+):
+    """Roll back updates when their event, row, or required version is missing."""
+    persistence_session = Mock()
+    persistence_session.scalar.side_effect = [event_row, session_row]
+    repository = SQLAlchemySessionRepository(persistence_session)
+    record = SessionRecord(14, 3, "Changed", None, "start", "end", 25)
+
+    with pytest.raises((NotFoundError, ValidationError), match=message):
+        repository.save(record, expected_version=expected_version)
+
+    persistence_session.add.assert_not_called()
+    persistence_session.commit.assert_not_called()
+    persistence_session.rollback.assert_called_once()
+
+
+def test_delete_returns_false_for_missing_parent_and_rolls_back():
+    """Avoid issuing a child delete when the parent event cannot be locked."""
+    session = Mock()
+    session.scalar.return_value = None
+    repository = SQLAlchemySessionRepository(session)
+
+    assert repository.delete(404, 12) is False
+
+    session.delete.assert_not_called()
+    session.commit.assert_not_called()
+    session.rollback.assert_called_once()

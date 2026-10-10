@@ -12,7 +12,7 @@ from app.core.exceptions import (
     DuplicateAccountError,
     ValidationError,
 )
-from app.core.security import hash_password, verify_password
+from app.core.security import create_access_token, hash_password, verify_password
 from app.domain.entities.user_account import UserAccount
 from app.domain.repositories.user_repository import UserRepository
 
@@ -124,3 +124,31 @@ def test_expired_token_is_rejected_without_repository_lookup(auth_service):
         service.get_authenticated_user(token)
 
     repository.find_by_id.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "email, password",
+    [("invalid-email", "correct-horse"), ("attendee@example.test", None)],
+)
+def test_login_rejects_malformed_email_or_empty_password_without_lookup(
+    auth_service, email, password
+):
+    """Return the same authentication error without looking up malformed credentials."""
+    service, repository = auth_service
+
+    with pytest.raises(AuthenticationError, match="Email or password is incorrect"):
+        service.authenticate(email, password)
+
+    repository.find_by_email.assert_not_called()
+
+
+def test_authenticated_token_for_missing_account_is_rejected(auth_service):
+    """Reject a validly signed token when its subject account no longer exists."""
+    service, repository = auth_service
+    valid_token = create_access_token(404, service._jwt_secret, 300)
+    repository.find_by_id.return_value = None
+
+    with pytest.raises(AuthenticationError, match="access token is invalid"):
+        service.get_authenticated_user(valid_token)
+
+    repository.find_by_id.assert_called_once_with(404)

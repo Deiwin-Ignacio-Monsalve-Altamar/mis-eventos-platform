@@ -393,3 +393,45 @@ def test_occupancy_reports_missing_session():
 
     with pytest.raises(NotFoundError, match="Session not found for this event"):
         repository.get_occupancy(4, 99)
+
+
+@pytest.mark.parametrize(
+    "reads, error_type, message",
+    [
+        ([None], NotFoundError, "Event not found"),
+        (
+            [SimpleNamespace(id=4), SimpleNamespace(id=14), None],
+            NotFoundError,
+            "Session not found",
+        ),
+    ],
+)
+def test_enroll_rejects_missing_event_or_session(reads, error_type, message):
+    """Roll back enrollment when its event or requested session is missing."""
+    session = Mock()
+    session.scalar.side_effect = reads
+    repository = SQLAlchemySessionAttendeeRepository(session)
+
+    with pytest.raises(error_type, match=message):
+        repository.enroll(4, 9, 21)
+
+    session.add.assert_not_called()
+    session.commit.assert_not_called()
+    session.rollback.assert_called_once()
+
+
+def test_cancel_returns_false_when_enrollment_is_not_active():
+    """Leave cancelled or absent session enrollments unchanged and roll back."""
+    session = Mock()
+    session.scalar.side_effect = [
+        SimpleNamespace(id=4),
+        SimpleNamespace(id=14),
+        9,
+        None,
+    ]
+    repository = SQLAlchemySessionAttendeeRepository(session)
+
+    assert repository.cancel(4, 9, 21) is False
+
+    session.commit.assert_not_called()
+    session.rollback.assert_called_once()
