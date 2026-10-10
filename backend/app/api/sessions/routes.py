@@ -27,7 +27,11 @@ def create_session(event_id: int):
     if isinstance(values, tuple):
         return values
     try:
-        session = get_session_service().create(event_id, values)
+        session = get_session_service().create(
+            event_id, values, creator_id=g.current_user.id
+        )
+    except AuthorizationError as error:
+        return error_response("forbidden", str(error), 403)
     except ValidationError as error:
         return error_response("validation_error", str(error), 400)
     except NotFoundError as error:
@@ -65,8 +69,10 @@ def update_session(event_id: int, session_id: int):
     expected_version = values.pop("version")
     try:
         session = get_session_service().update(
-            event_id, session_id, values, expected_version
+            event_id, session_id, values, expected_version, creator_id=g.current_user.id
         )
+    except AuthorizationError as error:
+        return error_response("forbidden", str(error), 403)
     except ConcurrencyConflictError as error:
         return concurrency_conflict_response(str(error), error.current_version)
     except ValidationError as error:
@@ -81,7 +87,9 @@ def update_session(event_id: int, session_id: int):
 def delete_session(event_id: int, session_id: int):
     """Delete a session without deleting its parent event or speaker profiles."""
     try:
-        get_session_service().delete(event_id, session_id)
+        get_session_service().delete(event_id, session_id, creator_id=g.current_user.id)
+    except AuthorizationError as error:
+        return error_response("forbidden", str(error), 403)
     except NotFoundError as error:
         return error_response("not_found", str(error), 404)
     return "", 204
