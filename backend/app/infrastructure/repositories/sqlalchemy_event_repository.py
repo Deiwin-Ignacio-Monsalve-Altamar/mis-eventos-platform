@@ -1,11 +1,14 @@
 """Persist domain events through the application's SQLAlchemy session."""
 
-from sqlalchemy import func, or_, select
+from datetime import datetime
+
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.exc import StaleDataError
 
 from app.core.exceptions import (
+    AuthorizationError,
     ConcurrencyConflictError,
     NotFoundError,
     RelatedRecordsError,
@@ -53,8 +56,94 @@ class SQLAlchemyEventRepository:
         models = self._session.execute(events_statement).scalars().all()
         return [self._to_record(model) for model in models], total
 
+    def list_by_creator(
+        self,
+        creator_id: int,
+        page: int,
+        page_size: int,
+        search_query: str | None,
+        status: str | None,
+    ) -> tuple[list[EventRecord], int]:
+        """Read an owner-filtered event page with optional search and status filters."""
+        filters = [Event.created_by_id == creator_id]
+        if search_query is not None:
+            filters.append(
+                or_(
+                    Event.title.icontains(search_query, autoescape=True),
+                    Event.description.icontains(search_query, autoescape=True),
+                    Event.location.icontains(search_query, autoescape=True),
+                )
+            )
+        if status is not None:
+            filters.append(Event.status == status)
+        total = self._session.scalar(select(func.count(Event.id)).where(*filters)) or 0
+        statement = (
+            select(Event)
+            .where(*filters)
+            .order_by(Event.starts_at.asc(), Event.id.asc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        )
+        models = self._session.execute(statement).scalars().all()
+        return [self._to_record(model) for model in models], total
+
+    def find_by_id_for_creator(
+        self, event_id: int, creator_id: int
+    ) -> EventRecord | None:
+        """Load one event only when its persisted owner matches the caller."""
+        model = self._session.scalar(
+            select(Event).where(Event.id == event_id, Event.created_by_id == creator_id)
+        )
+        return self._to_record(model) if model is not None else None
+
+    def dashboard_counts(self, creator_id: int, now: datetime) -> dict[str, int]:
+        """Aggregate owner-specific lifecycle metrics in one database query."""
+        active_status = Event.status.in_(("draft", "published"))
+        statement = select(
+            func.count(Event.id).label("total"),
+            func.sum(case((Event.status == "draft", 1), else_=0)).label("draft"),
+            func.sum(case((Event.status == "published", 1), else_=0)).label(
+                "published"
+            ),
+            func.sum(case((Event.status == "cancelled", 1), else_=0)).label(
+                "cancelled"
+            ),
+            func.sum(case((Event.status == "completed", 1), else_=0)).label(
+                "completed"
+            ),
+            func.sum(case((active_status & (Event.starts_at > now), 1), else_=0)).label(
+                "upcoming"
+            ),
+            func.sum(
+                case(
+                    (
+                        active_status
+                        & (Event.starts_at <= now)
+                        & (Event.ends_at > now),
+                        1,
+                    ),
+                    else_=0,
+                )
+            ).label("active"),
+            func.sum(
+                case(
+                    (
+                        (Event.status == "completed")
+                        | ((Event.ends_at <= now) & (Event.status != "cancelled")),
+                        1,
+                    ),
+                    else_=0,
+                )
+            ).label("finished"),
+        ).where(Event.created_by_id == creator_id)
+        row = self._session.execute(statement).one()
+        return {key: int(value or 0) for key, value in row._mapping.items()}
+
     def save(
-        self, event: EventRecord, expected_version: int | None = None
+        self,
+        event: EventRecord,
+        expected_version: int | None = None,
+        owner_id: int | None = None,
     ) -> EventRecord:
         """Insert or update an event and commit the transaction."""
         model = (
@@ -70,6 +159,12 @@ class SQLAlchemyEventRepository:
         if model is None:
             raise NotFoundError("Event no longer exists.")
         if event.id is not None:
+            if owner_id is None:
+                self._session.rollback()
+                raise AuthorizationError("An authenticated event owner is required.")
+            if model.created_by_id != owner_id:
+                self._session.rollback()
+                raise AuthorizationError("Only the event creator can edit this event.")
             if expected_version is None:
                 raise ValidationError("A resource version is required for updates.")
             if model.version != expected_version:
@@ -149,8 +244,8 @@ class SQLAlchemyEventRepository:
             is not None
         )
 
-    def delete(self, event_id: int) -> bool:
-        """Delete an event only when it has no dependent project records."""
+    def delete(self, event_id: int, owner_id: int) -> bool:
+        """Delete an owned event only when it has no dependent project records."""
         model = self._session.scalar(
             select(Event)
             .where(Event.id == event_id)
@@ -159,6 +254,9 @@ class SQLAlchemyEventRepository:
         )
         if model is None:
             return False
+        if model.created_by_id != owner_id:
+            self._session.rollback()
+            raise AuthorizationError("Only the event creator can delete this event.")
         if model.registrations or model.sessions or model.speakers:
             self._session.rollback()
             raise RelatedRecordsError(

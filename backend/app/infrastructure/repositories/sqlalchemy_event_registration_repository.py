@@ -3,7 +3,7 @@
 from collections.abc import Callable
 from datetime import UTC, datetime
 
-from sqlalchemy import func, select, update
+from sqlalchemy import case, func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -78,11 +78,58 @@ class SQLAlchemyEventRegistrationRepository:
             raise
         return self._to_record(registration)
 
+    def capacity_for_event(self, event_id: int) -> tuple[int, int] | None:
+        """Count only registered attendees when reporting public event capacity."""
+        row = self._session.execute(
+            select(Event.capacity, func.count(Registration.id))
+            .select_from(Event)
+            .outerjoin(
+                Registration,
+                (Registration.event_id == Event.id)
+                & (Registration.status == "registered"),
+            )
+            .where(Event.id == event_id)
+            .group_by(Event.id)
+        ).one_or_none()
+        if row is None:
+            return None
+        return int(row[0]), int(row[1])
+
     def list_by_user(
-        self, user_id: int, page: int, page_size: int
+        self,
+        user_id: int,
+        page: int,
+        page_size: int,
+        status: str | None = None,
+        period: str | None = None,
+        now: datetime | None = None,
     ) -> tuple[list[EventRegistrationDetails], int]:
-        """Read the caller's registrations with public event data and all statuses."""
-        filters = (Registration.user_id == user_id,)
+        """Read the caller's registrations with optional lifecycle filters."""
+        filters = [Registration.user_id == user_id]
+        if status is not None:
+            filters.append(Registration.status == status)
+        if period is not None:
+            if now is None:
+                raise ValueError("A UTC timestamp is required for period filters.")
+            if period == "upcoming":
+                filters.append(
+                    (Registration.status == "registered")
+                    & Event.status.notin_(("cancelled", "completed"))
+                    & (Event.starts_at > now)
+                )
+            elif period == "active":
+                filters.append(
+                    (Registration.status == "registered")
+                    & Event.status.in_(("draft", "published"))
+                    & (Event.starts_at <= now)
+                    & (Event.ends_at > now)
+                )
+            elif period == "past":
+                filters.append(
+                    (Registration.status == "registered")
+                    & (Event.status != "cancelled")
+                    & ((Event.ends_at <= now) | (Event.status == "completed"))
+                )
         total = (
             self._session.scalar(select(func.count(Registration.id)).where(*filters))
             or 0
@@ -91,13 +138,41 @@ class SQLAlchemyEventRegistrationRepository:
             select(Registration, Event)
             .join(Event, Event.id == Registration.event_id)
             .where(*filters)
-            .order_by(Event.starts_at.asc(), Event.id.asc())
+            .order_by(Event.starts_at.asc(), Event.id.asc(), Registration.id.asc())
             .offset((page - 1) * page_size)
             .limit(page_size)
         ).all()
         return [
             self._to_details(registration, event) for registration, event in rows
         ], total
+
+    def summary_by_user(self, user_id: int, now: datetime) -> dict[str, int]:
+        """Aggregate status-aware attendance counts for one authenticated user."""
+        registered = Registration.status == "registered"
+        event_not_cancelled = Event.status != "cancelled"
+        future_event = Event.status.notin_(("cancelled", "completed")) & (
+            Event.starts_at > now
+        )
+        past_event = event_not_cancelled & (
+            (Event.ends_at <= now) | (Event.status == "completed")
+        )
+        statement = (
+            select(
+                func.count(Registration.id).label("total"),
+                func.sum(case((registered, 1), else_=0)).label("active"),
+                func.sum(case((registered & future_event, 1), else_=0)).label(
+                    "upcoming"
+                ),
+                func.sum(case((registered & past_event, 1), else_=0)).label("past"),
+                func.sum(case((Registration.status == "cancelled", 1), else_=0)).label(
+                    "cancelled"
+                ),
+            )
+            .join(Event, Event.id == Registration.event_id)
+            .where(Registration.user_id == user_id)
+        )
+        row = self._session.execute(statement).one()
+        return {key: int(value or 0) for key, value in row._mapping.items()}
 
     def cancel(self, event_id: int, user_id: int) -> bool:
         """Cancel a parent registration and active session enrollments atomically."""

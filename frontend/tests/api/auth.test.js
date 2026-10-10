@@ -2,7 +2,7 @@
 
 import assert from 'node:assert/strict'
 import { afterEach, test } from 'node:test'
-import { getCurrentUser, login, registerAccount } from '../../src/api/auth.js'
+import { getCurrentUser, login, logout, registerAccount } from '../../src/api/auth.js'
 import { listMyRegistrations } from '../../src/api/registrations.js'
 
 const originalFetch = globalThis.fetch
@@ -102,6 +102,36 @@ test('session lookup uses the cookie-authenticated endpoint and distinguishes 40
   await assert.rejects(getCurrentUser(), (error) => {
     assert.equal(url, '/api/v1/auth/me')
     assert.equal(error.status, 401)
+    return true
+  })
+})
+
+test('logout expires the server cookie through the authentication endpoint', async () => {
+  let url
+  let options
+  globalThis.fetch = async (requestUrl, requestOptions) => {
+    url = requestUrl
+    options = requestOptions
+    return { ok: true, status: 204, json: async () => null }
+  }
+
+  await logout()
+
+  assert.equal(url, '/api/v1/auth/logout')
+  assert.equal(options.method, 'POST')
+  assert.equal(options.credentials, 'include')
+})
+
+test('logout failures remain API errors and do not report success', async () => {
+  globalThis.fetch = async () => ({
+    ok: false,
+    status: 503,
+    json: async () => ({ error: { code: 'authentication_unavailable', message: 'Authentication unavailable.' } }),
+  })
+
+  await assert.rejects(logout(), (error) => {
+    assert.equal(error.status, 503)
+    assert.equal(error.code, 'authentication_unavailable')
     return true
   })
 })

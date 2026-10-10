@@ -48,6 +48,30 @@ def test_cancel_delegates_and_reports_missing_registration(registration_service)
         service.cancel(7, 22)
 
 
+def test_capacity_for_event_counts_only_available_registration_snapshot(
+    registration_service,
+):
+    """Calculate available event seats from the active occupancy result."""
+    service, repository = registration_service
+    repository.capacity_for_event.return_value = (12, 7)
+
+    assert service.capacity_for_event(7) == {
+        "capacity": 12,
+        "occupied": 7,
+        "available": 5,
+    }
+    repository.capacity_for_event.assert_called_once_with(7)
+
+
+def test_capacity_for_missing_event_raises_not_found(registration_service):
+    """Do not return a misleading zero-capacity snapshot for an unknown event."""
+    service, repository = registration_service
+    repository.capacity_for_event.return_value = None
+
+    with pytest.raises(NotFoundError, match="Event not found"):
+        service.capacity_for_event(999)
+
+
 def test_list_for_user_returns_active_and_cancelled_registrations(registration_service):
     """Return all statuses while forwarding only the authenticated user's ID."""
     service, repository = registration_service
@@ -67,7 +91,8 @@ def test_list_for_user_returns_active_and_cancelled_registrations(registration_s
     ]
     repository.list_by_user.return_value = (registrations, 2)
 
-    page = service.list_for_user(22)
+    now = datetime(2030, 1, 1, tzinfo=UTC)
+    page = service.list_for_user(22, now=now)
 
     assert [item.status for item in page.registrations] == [
         "registered",
@@ -76,7 +101,7 @@ def test_list_for_user_returns_active_and_cancelled_registrations(registration_s
     assert page.total == 2
     assert page.page == 1
     assert page.page_size == 20
-    repository.list_by_user.assert_called_once_with(22, 1, 20)
+    repository.list_by_user.assert_called_once_with(22, 1, 20, None, None, now)
 
 
 def test_list_for_user_returns_an_empty_page_without_repository_mutations(
@@ -86,13 +111,14 @@ def test_list_for_user_returns_an_empty_page_without_repository_mutations(
     service, repository = registration_service
     repository.list_by_user.return_value = ([], 0)
 
-    page = service.list_for_user(22)
+    now = datetime(2030, 1, 1, tzinfo=UTC)
+    page = service.list_for_user(22, now=now)
 
     assert page.registrations == ()
     assert page.total == 0
     repository.register.assert_not_called()
     repository.cancel.assert_not_called()
-    repository.list_by_user.assert_called_once_with(22, 1, 20)
+    repository.list_by_user.assert_called_once_with(22, 1, 20, None, None, now)
 
 
 @pytest.mark.parametrize(
@@ -107,3 +133,37 @@ def test_list_for_user_validates_pagination(registration_service, page, page_siz
         service.list_for_user(22, page=page, page_size=page_size)
 
     repository.list_by_user.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("status", "period"),
+    [("pending", None), (None, "cancelled"), ("registered", "future")],
+)
+def test_list_for_user_rejects_unknown_registration_filters(
+    registration_service, status, period
+):
+    """Reject filters that are not represented by persisted registration/event states."""
+    service, repository = registration_service
+
+    with pytest.raises(ValidationError):
+        service.list_for_user(22, status=status, period=period)
+
+    repository.list_by_user.assert_not_called()
+
+
+def test_summary_for_user_uses_account_and_utc_timestamp(registration_service):
+    """Scope activity aggregates to the requested account and a normalized instant."""
+    service, repository = registration_service
+    repository.summary_by_user.return_value = {
+        "total": 3,
+        "active": 2,
+        "upcoming": 1,
+        "past": 1,
+        "cancelled": 1,
+    }
+    now = datetime(2030, 1, 1, 5, tzinfo=UTC)
+
+    result = service.summary_for_user(22, now)
+
+    assert result["total"] == 3
+    repository.summary_by_user.assert_called_once_with(22, now)

@@ -338,6 +338,15 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /auth/logout:
+    post:
+      tags: [Authentication]
+      summary: End the current browser session
+      description: Expires the access-token cookie. It does not delete the account or its data.
+      responses:
+        "204":
+          description: The access-token cookie was expired.
+
   /events:
     get:
       tags: [Events]
@@ -545,6 +554,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "403":
+          description: Caller is not the event creator.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "404":
           description: Event not found.
           content:
@@ -578,6 +593,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "403":
+          description: Caller is not the event creator.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "404":
           description: Event not found.
           content:
@@ -597,11 +618,155 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /events/{event_id}/capacity:
+    get:
+      tags: [Events]
+      summary: Get current event seat availability
+      parameters:
+        - in: path
+          name: event_id
+          required: true
+          schema: {type: integer, minimum: 1}
+      responses:
+        "200":
+          description: Capacity snapshot counts only active registrations.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [capacity, occupied, available]
+                properties:
+                  capacity: {type: integer, minimum: 1}
+                  occupied: {type: integer, minimum: 0}
+                  available: {type: integer, minimum: 0}
+        "404":
+          description: Event not found.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+
+  /events/mine:
+    get:
+      tags: [Events]
+      summary: List the authenticated creator's events
+      security:
+        - AccessTokenCookie: []
+      parameters:
+        - in: query
+          name: page
+          schema: {type: integer, minimum: 1, default: 1}
+        - in: query
+          name: page_size
+          schema: {type: integer, minimum: 1, maximum: 100, default: 20}
+        - in: query
+          name: q
+          schema: {type: string, minLength: 1, maxLength: 200}
+        - in: query
+          name: status
+          schema: {type: string, enum: [draft, published, cancelled, completed]}
+      responses:
+        "200":
+          description: Owner-filtered events and pagination metadata.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [events, pagination]
+                properties:
+                  events:
+                    type: array
+                    items: {$ref: "#/components/schemas/Event"}
+                  pagination: {$ref: "#/components/schemas/Pagination"}
+        "400":
+          description: Invalid query parameters or client-supplied owner identifier.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+        "401":
+          description: Authentication required.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+
+  /events/mine/summary:
+    get:
+      tags: [Events]
+      summary: Get event activity metrics for the authenticated creator
+      description: >-
+        Upcoming counts draft or published events whose start time is after the current UTC instant.
+        Active counts draft or published events whose interval contains that instant. Finished counts
+        completed events or non-cancelled events whose end time has passed. Cancelled events are not
+        included in finished. Status percentages use all of the creator's events as their denominator.
+      security:
+        - AccessTokenCookie: []
+      responses:
+        "200":
+          description: Owner-scoped event totals, date metrics, status counts, and percentages.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [summary]
+                properties:
+                  summary:
+                    type: object
+                    required: [total_events, upcoming_events, active_events, finished_events, cancelled_events, status_counts, status_percentages]
+                    properties:
+                      total_events: {type: integer, minimum: 0}
+                      upcoming_events: {type: integer, minimum: 0}
+                      active_events: {type: integer, minimum: 0}
+                      finished_events: {type: integer, minimum: 0}
+                      cancelled_events: {type: integer, minimum: 0}
+                      status_counts:
+                        type: object
+                        additionalProperties: {type: integer, minimum: 0}
+                      status_percentages:
+                        type: object
+                        additionalProperties: {type: number, minimum: 0, maximum: 100}
+        "401":
+          description: Authentication required.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+
+  /events/mine/{event_id}:
+    get:
+      tags: [Events]
+      summary: Get an event through its owner-only management route
+      security:
+        - AccessTokenCookie: []
+      parameters:
+        - in: path
+          name: event_id
+          required: true
+          schema: {type: integer, minimum: 1}
+      responses:
+        "200":
+          description: Event returned to its creator.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  event: {$ref: "#/components/schemas/Event"}
+        "401":
+          description: Authentication required.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+        "404":
+          description: Event does not exist or is not owned by the caller.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+
   /registrations/me:
     get:
       tags: [Registrations]
       summary: List the current user's event registrations
-      description: Registrations can only be listed for the authenticated user.
+      description: >-
+        Registrations can only be listed for the authenticated user. Period filters use UTC event
+        timestamps. A registered record for a past event is not proof of physical attendance.
       security:
         - AccessTokenCookie: []
       parameters:
@@ -618,6 +783,12 @@ paths:
             minimum: 1
             maximum: 100
             default: 20
+        - in: query
+          name: status
+          schema: {type: string, enum: [registered, cancelled]}
+        - in: query
+          name: period
+          schema: {type: string, enum: [upcoming, active, past]}
       responses:
         "200":
           description: Registrations and pagination metadata.
@@ -660,6 +831,37 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+
+  /registrations/me/summary:
+    get:
+      tags: [Registrations]
+      summary: Get attendance activity for the authenticated user
+      description: A registered record for a past event does not verify physical attendance.
+      security:
+        - AccessTokenCookie: []
+      responses:
+        "200":
+          description: Registration, upcoming, past-event, and cancelled counts for the current user.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [summary]
+                properties:
+                  summary:
+                    type: object
+                    required: [total, active, upcoming, past, cancelled]
+                    properties:
+                      total: {type: integer, minimum: 0}
+                      active: {type: integer, minimum: 0}
+                      upcoming: {type: integer, minimum: 0}
+                      past: {type: integer, minimum: 0}
+                      cancelled: {type: integer, minimum: 0}
+        "401":
+          description: Authentication required.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
 
   /events/{event_id}/registrations/me:
     parameters:

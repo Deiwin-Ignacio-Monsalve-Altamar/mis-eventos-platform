@@ -20,6 +20,11 @@ export async function login(credentials) {
   return response.user
 }
 
+/** Ask the server to expire the authentication cookie. */
+export async function logout() {
+  return request('/auth/logout', { method: 'POST' })
+}
+
 /** Read the current user from the cookie-authenticated profile endpoint. */
 export async function getCurrentUser() {
   const response = await request('/auth/me')

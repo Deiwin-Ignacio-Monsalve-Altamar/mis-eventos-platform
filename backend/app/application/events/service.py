@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 
 from app.application.dto.event_page import EventPage
 from app.application.pagination import positive_integer
-from app.core.exceptions import NotFoundError, ValidationError
+from app.core.exceptions import AuthorizationError, NotFoundError, ValidationError
 from app.domain.entities.event_record import EventRecord
 from app.domain.repositories.event_repository import EventRepository
 
@@ -40,12 +40,18 @@ class EventService:
         )
 
     def update(
-        self, event_id: int, values: dict[str, object], expected_version: object
+        self,
+        event_id: int,
+        values: dict[str, object],
+        expected_version: object,
+        creator_id: int,
     ) -> EventRecord:
-        """Validate and persist supplied event fields without changing its creator."""
+        """Authorize the creator, then validate and persist an event update."""
         existing = self._event_repository.find_by_id(event_id)
         if existing is None:
             raise NotFoundError("Event not found.")
+        if existing.created_by_id != creator_id:
+            raise AuthorizationError("Only the event creator can edit this event.")
         if (
             isinstance(expected_version, bool)
             or not isinstance(expected_version, int)
@@ -72,11 +78,16 @@ class EventService:
             version=existing.version,
             **event_values,
         )
-        return self._event_repository.save(updated, expected_version)
+        return self._event_repository.save(updated, expected_version, creator_id)
 
-    def delete(self, event_id: int) -> None:
-        """Delete an event or raise when it is missing or still referenced."""
-        if not self._event_repository.delete(event_id):
+    def delete(self, event_id: int, creator_id: int) -> None:
+        """Delete an owned event or raise when missing, forbidden, or referenced."""
+        existing = self._event_repository.find_by_id(event_id)
+        if existing is None:
+            raise NotFoundError("Event not found.")
+        if existing.created_by_id != creator_id:
+            raise AuthorizationError("Only the event creator can delete this event.")
+        if not self._event_repository.delete(event_id, creator_id):
             raise NotFoundError("Event not found.")
 
     def get_by_id(self, event_id: int) -> EventRecord:
@@ -106,6 +117,75 @@ class EventService:
             page_size=validated_page_size,
             total=total,
         )
+
+    def list_my_events(
+        self,
+        creator_id: int,
+        page: object,
+        page_size: object,
+        search_query: object,
+        status: object = None,
+    ) -> EventPage:
+        """Return a validated page restricted to the authenticated creator."""
+        validated_page = self._positive_integer(
+            page, "page", DEFAULT_PAGE, MAXIMUM_PAGE_NUMBER
+        )
+        validated_page_size = self._positive_integer(
+            page_size, "page_size", DEFAULT_PAGE_SIZE, MAXIMUM_PAGE_SIZE
+        )
+        normalized_search = self._normalize_search_query(search_query)
+        normalized_status = self._normalize_status_filter(status)
+        events, total = self._event_repository.list_by_creator(
+            creator_id,
+            validated_page,
+            validated_page_size,
+            normalized_search,
+            normalized_status,
+        )
+        return EventPage(tuple(events), validated_page, validated_page_size, total)
+
+    def get_my_event(self, event_id: int, creator_id: int) -> EventRecord:
+        """Return an event only when it belongs to the authenticated creator."""
+        event = self._event_repository.find_by_id_for_creator(event_id, creator_id)
+        if event is None:
+            raise NotFoundError("Event not found.")
+        return event
+
+    def dashboard(
+        self, creator_id: int, now: datetime | None = None
+    ) -> dict[str, object]:
+        """Calculate creator-only event totals and status percentages at one UTC instant."""
+        timestamp = now or datetime.now(UTC)
+        if timestamp.tzinfo is None or timestamp.utcoffset() is None:
+            raise ValidationError("Dashboard time must be timezone-aware.")
+        timestamp = timestamp.astimezone(UTC)
+        counts = self._event_repository.dashboard_counts(creator_id, timestamp)
+        total = counts["total"]
+        status_counts = {
+            status: counts.get(status, 0) for status in sorted(EVENT_STATUSES)
+        }
+        percentages = {
+            status: round((count * 100 / total), 1) if total else 0.0
+            for status, count in status_counts.items()
+        }
+        return {
+            "total_events": total,
+            "upcoming_events": counts.get("upcoming", 0),
+            "active_events": counts.get("active", 0),
+            "finished_events": counts.get("finished", 0),
+            "cancelled_events": status_counts["cancelled"],
+            "status_counts": status_counts,
+            "status_percentages": percentages,
+        }
+
+    @staticmethod
+    def _normalize_status_filter(value: object) -> str | None:
+        """Validate an optional status filter against the event model enum."""
+        if value is None:
+            return None
+        if not isinstance(value, str) or value not in EVENT_STATUSES:
+            raise ValidationError("status must be a valid event status.")
+        return value
 
     @staticmethod
     def _positive_integer(

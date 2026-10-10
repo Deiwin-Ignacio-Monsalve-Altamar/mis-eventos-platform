@@ -7,7 +7,12 @@ from unittest.mock import Mock
 import pytest
 
 from app.application.events.service import EventService
-from app.core.exceptions import NotFoundError, RelatedRecordsError, ValidationError
+from app.core.exceptions import (
+    AuthorizationError,
+    NotFoundError,
+    RelatedRecordsError,
+    ValidationError,
+)
 from app.domain.entities.event_record import EventRecord
 from app.domain.repositories.event_repository import EventRepository
 
@@ -29,8 +34,8 @@ MISSING_FIELD = object()
 def event_service():
     """Build the event application service with a mocked repository."""
     repository = Mock(spec=EventRepository)
-    repository.save.side_effect = lambda event, expected_version=None: replace(
-        event, id=12, version=(expected_version or 0) + 1
+    repository.save.side_effect = lambda event, expected_version=None, owner_id=None: (
+        replace(event, id=12, version=(expected_version or 0) + 1)
     )
     return EventService(repository), repository
 
@@ -161,14 +166,25 @@ def test_update_event_merges_fields_and_preserves_creator(event_service):
     repository.find_by_id.return_value = EVENT
 
     updated_event = service.update(
-        12, {"title": "Revised Conference"}, expected_version=1
+        12, {"title": "Revised Conference"}, expected_version=1, creator_id=7
     )
 
     assert updated_event.title == "Revised Conference"
     saved_event = repository.save.call_args.args[0]
     assert saved_event.created_by_id == EVENT.created_by_id
     assert saved_event.capacity == EVENT.capacity
-    repository.save.assert_called_once_with(saved_event, 1)
+    repository.save.assert_called_once_with(saved_event, 1, 7)
+
+
+def test_update_rejects_another_users_event_before_writing(event_service):
+    """Reject event edits when the authenticated creator differs from the owner."""
+    service, repository = event_service
+    repository.find_by_id.return_value = EVENT
+
+    with pytest.raises(AuthorizationError):
+        service.update(12, {"title": "Unauthorized"}, 1, creator_id=99)
+
+    repository.save.assert_not_called()
 
 
 def test_update_missing_event_raises_not_found(event_service):
@@ -177,7 +193,7 @@ def test_update_missing_event_raises_not_found(event_service):
     repository.find_by_id.return_value = None
 
     with pytest.raises(NotFoundError):
-        service.update(999, {"title": "Missing"}, expected_version=1)
+        service.update(999, {"title": "Missing"}, expected_version=1, creator_id=7)
 
     repository.save.assert_not_called()
 
@@ -212,6 +228,69 @@ def test_list_events_rejects_invalid_query_parameters(
     repository.list_events.assert_not_called()
 
 
+def test_list_my_events_scopes_search_state_and_pagination_to_creator(event_service):
+    """Forward only validated filters alongside the authenticated creator ID."""
+    service, repository = event_service
+    repository.list_by_creator.return_value = ([EVENT], 4)
+
+    page = service.list_my_events(7, "2", "3", " Conference ", "draft")
+
+    assert page.events == (EVENT,)
+    assert (page.page, page.page_size, page.total) == (2, 3, 4)
+    repository.list_by_creator.assert_called_once_with(7, 2, 3, "Conference", "draft")
+    repository.list_events.assert_not_called()
+
+
+def test_list_my_events_rejects_unknown_status(event_service):
+    """Reject unsupported event state filters before querying owned events."""
+    service, repository = event_service
+
+    with pytest.raises(ValidationError):
+        service.list_my_events(7, 1, 20, None, "archived")
+
+    repository.list_by_creator.assert_not_called()
+
+
+def test_dashboard_calculates_status_percentages_over_owned_event_total(event_service):
+    """Calculate percentages using only the repository's owner-scoped aggregates."""
+    service, repository = event_service
+    repository.dashboard_counts.return_value = {
+        "total": 4,
+        "draft": 1,
+        "published": 1,
+        "cancelled": 1,
+        "completed": 1,
+        "upcoming": 1,
+        "active": 0,
+        "finished": 1,
+    }
+
+    summary = service.dashboard(7, datetime(2030, 1, 1, tzinfo=UTC))
+
+    assert summary["total_events"] == 4
+    assert summary["cancelled_events"] == 1
+    assert summary["status_percentages"] == {
+        "draft": 25.0,
+        "published": 25.0,
+        "cancelled": 25.0,
+        "completed": 25.0,
+    }
+    repository.dashboard_counts.assert_called_once_with(
+        7, datetime(2030, 1, 1, tzinfo=UTC)
+    )
+
+
+def test_dashboard_returns_zero_percentages_without_events(event_service):
+    """Avoid division by zero when a creator has no event records."""
+    service, repository = event_service
+    repository.dashboard_counts.return_value = {"total": 0}
+
+    summary = service.dashboard(7, datetime(2030, 1, 1, tzinfo=UTC))
+
+    assert summary["total_events"] == 0
+    assert set(summary["status_percentages"].values()) == {0.0}
+
+
 def test_get_missing_event_raises_not_found(event_service):
     """Raise not found when the repository has no event with the requested ID."""
     service, repository = event_service
@@ -224,16 +303,28 @@ def test_get_missing_event_raises_not_found(event_service):
 def test_delete_missing_event_raises_not_found(event_service):
     """Raise not found when the repository reports that no event was deleted."""
     service, repository = event_service
-    repository.delete.return_value = False
+    repository.find_by_id.return_value = None
 
     with pytest.raises(NotFoundError):
-        service.delete(999)
+        service.delete(999, creator_id=7)
 
 
 def test_delete_related_event_propagates_repository_conflict(event_service):
     """Preserve related data by propagating the repository deletion conflict."""
     service, repository = event_service
+    repository.find_by_id.return_value = EVENT
     repository.delete.side_effect = RelatedRecordsError("Related records exist.")
 
     with pytest.raises(RelatedRecordsError):
-        service.delete(12)
+        service.delete(12, creator_id=7)
+
+
+def test_delete_rejects_another_users_event_before_writing(event_service):
+    """Reject deletion before repository mutation if the caller is not the owner."""
+    service, repository = event_service
+    repository.find_by_id.return_value = EVENT
+
+    with pytest.raises(AuthorizationError):
+        service.delete(12, creator_id=99)
+
+    repository.delete.assert_not_called()

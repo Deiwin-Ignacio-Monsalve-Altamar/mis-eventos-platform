@@ -81,6 +81,20 @@ def get_current_user():
     return jsonify({"user": _public_user(g.current_user)}), 200
 
 
+@auth_bp.post("/logout")
+def logout_user():
+    """Expire the browser's authentication cookie without changing stored data."""
+    response = current_app.response_class(status=204)
+    response.delete_cookie(
+        ACCESS_TOKEN_COOKIE_NAME,
+        path="/api/v1",
+        secure=current_app.config["JWT_COOKIE_SECURE"],
+        httponly=True,
+        samesite="Lax",
+    )
+    return response
+
+
 def _public_user(account: UserAccount) -> dict[str, int | str]:
     """Serialize public account fields while excluding password hashes."""
     return {
