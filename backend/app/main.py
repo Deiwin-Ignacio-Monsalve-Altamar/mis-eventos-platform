@@ -3,6 +3,7 @@
 import os
 import time
 import uuid
+from http import HTTPStatus
 
 from flask import Flask, g, jsonify, request
 from sqlalchemy import text
@@ -121,7 +122,7 @@ def _register_observability_routes(app: Flask) -> None:
     @app.get("/api/v1/live")
     def liveness_endpoint():
         """Confirm the Flask process can serve a request."""
-        return jsonify({"status": "ok"}), 200
+        return jsonify({"status": "ok"}), HTTPStatus.OK
 
     @app.get("/api/v1/ready")
     def readiness_endpoint():
@@ -130,7 +131,7 @@ def _register_observability_routes(app: Flask) -> None:
         if not secret or len(secret.encode("utf-8")) < 32:
             return jsonify(
                 {"status": "unavailable", "dependency": "configuration"}
-            ), 503
+            ), HTTPStatus.SERVICE_UNAVAILABLE
         try:
             with db.engine.connect() as connection:
                 connection.execute(text("SELECT 1"))
@@ -142,7 +143,9 @@ def _register_observability_routes(app: Flask) -> None:
                     "Backend readiness check failed.",
                     extra={"stage": "database_readiness", **_log_context(app)},
                 )
-            return jsonify({"status": "unavailable", "dependency": "database"}), 503
+            return jsonify(
+                {"status": "unavailable", "dependency": "database"}
+            ), HTTPStatus.SERVICE_UNAVAILABLE
         previous = app.extensions.get("mis_eventos_readiness")
         app.extensions["mis_eventos_readiness"] = True
         if previous is not True:
@@ -150,7 +153,7 @@ def _register_observability_routes(app: Flask) -> None:
                 "Backend readiness check passed.",
                 extra={"stage": "database_readiness", **_log_context(app)},
             )
-        return jsonify({"status": "ok"}), 200
+        return jsonify({"status": "ok"}), HTTPStatus.OK
 
 
 def _register_http_instrumentation(app: Flask) -> None:

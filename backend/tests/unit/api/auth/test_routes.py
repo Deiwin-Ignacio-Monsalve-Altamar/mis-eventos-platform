@@ -1,5 +1,6 @@
 """Verify authentication route responses with application services mocked."""
 
+from http import HTTPStatus
 from unittest.mock import Mock
 
 import pytest
@@ -67,12 +68,12 @@ def registration_payload(**overrides):
 
 
 def test_registration_returns_public_account_and_calls_service(auth_client):
-    """Return 201 and delegate registration fields to the application service."""
+    """Return a created response and delegate registration fields to the service."""
     client, service = auth_client
 
     response = client.post("/api/v1/auth/register", json=registration_payload())
 
-    assert response.status_code == 201
+    assert response.status_code == HTTPStatus.CREATED
     assert response.json["user"] == {
         "id": 7,
         "email": "attendee@example.test",
@@ -89,12 +90,12 @@ def test_registration_returns_public_account_and_calls_service(auth_client):
 
 
 def test_registration_rejects_non_object_json_without_calling_service(auth_client):
-    """Return 400 for malformed request bodies before service invocation."""
+    """Return a bad-request response before invoking the service for malformed data."""
     client, service = auth_client
 
     response = client.post("/api/v1/auth/register", json=["not", "an", "object"])
 
-    assert response.status_code == 400
+    assert response.status_code == HTTPStatus.BAD_REQUEST
     service.register.assert_not_called()
 
 
@@ -112,9 +113,9 @@ def test_registration_maps_validation_and_duplicate_errors(auth_client):
         "/api/v1/auth/register", json=registration_payload()
     )
 
-    assert invalid_response.status_code == 400
+    assert invalid_response.status_code == HTTPStatus.BAD_REQUEST
     assert invalid_response.json["error"]["code"] == "validation_error"
-    assert duplicate_response.status_code == 409
+    assert duplicate_response.status_code == HTTPStatus.CONFLICT
     assert duplicate_response.json["error"]["code"] == "account_exists"
 
 
@@ -127,7 +128,7 @@ def test_login_returns_profile_and_http_only_cookie(auth_client):
         json={"email": "attendee@example.test", "password": "correct-password"},
     )
 
-    assert response.status_code == 200
+    assert response.status_code == HTTPStatus.OK
     assert response.json["user"]["email"] == "attendee@example.test"
     assert "password_hash" not in response.json["user"]
     assert "HttpOnly" in response.headers["Set-Cookie"]
@@ -138,7 +139,7 @@ def test_login_returns_profile_and_http_only_cookie(auth_client):
 
 
 def test_login_maps_invalid_credentials_to_unauthorized(auth_client):
-    """Return 401 when the application service rejects credentials."""
+    """Return unauthorized when the application service rejects credentials."""
     client, service = auth_client
     service.authenticate.side_effect = AuthenticationError("Invalid credentials.")
 
@@ -147,7 +148,7 @@ def test_login_maps_invalid_credentials_to_unauthorized(auth_client):
         json={"email": "attendee@example.test", "password": "wrong-password"},
     )
 
-    assert response.status_code == 401
+    assert response.status_code == HTTPStatus.UNAUTHORIZED
     assert response.json["error"]["code"] == "invalid_credentials"
 
 
@@ -160,8 +161,8 @@ def test_current_user_rejects_missing_and_invalid_tokens(auth_client):
 
     invalid_response = client.get("/api/v1/auth/me")
 
-    assert missing_response.status_code == 401
-    assert invalid_response.status_code == 401
+    assert missing_response.status_code == HTTPStatus.UNAUTHORIZED
+    assert invalid_response.status_code == HTTPStatus.UNAUTHORIZED
     service.get_authenticated_user.assert_called_once_with("invalid-token")
 
 
@@ -172,7 +173,7 @@ def test_logout_expires_only_the_auth_cookie_without_auth_service_mutation(auth_
 
     response = client.post("/api/v1/auth/logout")
 
-    assert response.status_code == 204
+    assert response.status_code == HTTPStatus.NO_CONTENT
     set_cookie = response.headers["Set-Cookie"]
     assert "access_token=;" in set_cookie
     assert "Max-Age=0" in set_cookie

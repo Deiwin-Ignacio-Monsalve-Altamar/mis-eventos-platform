@@ -1,6 +1,13 @@
 # mis-eventos-platform
 Full-stack event management application built with Flask, React, PostgreSQL, and Docker, following Clean Architecture and SOLID principles.
 
+## Component guides
+
+- [Backend setup, API endpoints, migrations, and tests](backend/README.md)
+- [Frontend setup, application routes, and tests](frontend/README.md)
+- [Frontend visual design and accessibility guidance](docs/frontend-design.md)
+- [Integration test scope and command](backend/tests/integration/README.md)
+
 ## Database and migrations
 
 For local development, create `.env` from `.env.example` only when `.env` does not already exist. Run this from the repository root; it preserves any existing local configuration:
@@ -104,9 +111,13 @@ make coverage
 make lint
 ```
 
-Backend tests use pytest-cov with line and branch metrics; frontend tests use
-Node's built-in test runner and its experimental coverage report. Both suites
-use their existing test setup and do not require Docker or PostgreSQL.
+The default backend suite collects unit tests with pytest-cov line and branch
+metrics; frontend tests use Node's built-in test runner and its experimental
+coverage report. These suites do not require Docker or PostgreSQL. The backend
+integration suite is run separately from `backend/` with
+`poetry run pytest tests/integration -m integration`; it uses mocked
+repositories and does not connect to PostgreSQL. See the
+[integration test guide](backend/tests/integration/README.md) for its scope.
 `make test` and `make coverage` always run both suites, summarize actual results,
 and return a failure status if either suite fails. Generated artifacts are
 written under the ignored `reports/coverage/` directory, including the

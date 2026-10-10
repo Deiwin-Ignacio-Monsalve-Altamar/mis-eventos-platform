@@ -201,7 +201,7 @@ Registration requires a published future event with available capacity. As the e
 curl -i -b /tmp/mis-eventos-cookies.txt -X POST \
   http://localhost:5000/api/v1/events/{event_id}/sessions \
   -H 'Content-Type: application/json' \
-  -d '{"title":"Taller de ejemplo","starts_at":"2030-05-01T14:00:00Z","ends_at":"2030-05-01T15:00:00Z","capacity":20}'
+  -d '{"title":"Sample workshop","starts_at":"2030-05-01T14:00:00Z","ends_at":"2030-05-01T15:00:00Z","capacity":20}'
 ```
 
 To sign out:
@@ -220,6 +220,7 @@ From `backend/`:
 
 ```sh
 poetry run pytest
+poetry run pytest tests/integration -m integration
 poetry run ruff check .
 poetry run ruff format --check .
 set -a
@@ -228,7 +229,7 @@ set +a
 poetry run alembic current
 ```
 
-From the repository root, `make test-backend` runs pytest with line and branch coverage; `make lint` runs Ruff and ESLint. `make migrate` applies migrations to the active Compose stack. If readiness returns 503, check PostgreSQL availability, confirm Alembic applied the schema, and ensure `JWT_SECRET_KEY` is at least 32 bytes. Use `make status` and `make logs` to diagnose the stack without exposing secrets.
+The default `poetry run pytest` command collects unit tests from `tests/unit`. Run the integration suite separately with `poetry run pytest tests/integration -m integration`; it mocks persistence and does not require a database. From the repository root, `make test-backend` runs the unit suite with line and branch coverage; `make lint` runs Ruff and ESLint. `make migrate` applies migrations to the active Compose stack. If readiness returns 503, check PostgreSQL availability, confirm Alembic applied the schema, and ensure `JWT_SECRET_KEY` is at least 32 bytes. Use `make status` and `make logs` to diagnose the stack without exposing secrets.
 
 ## Run the full application
 

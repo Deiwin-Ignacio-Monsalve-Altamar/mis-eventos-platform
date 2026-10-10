@@ -1,3 +1,5 @@
+from http import HTTPStatus
+
 from flask import Blueprint
 
 from app.application.health.service import HealthService
@@ -10,4 +12,4 @@ health_bp = Blueprint("health", __name__)
 def health_check():
     service: HealthService = get_health_service()
 
-    return service.check(), 200
+    return service.check(), HTTPStatus.OK
