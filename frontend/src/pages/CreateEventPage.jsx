@@ -1,7 +1,7 @@
 /** Create an event through the authenticated event-management API. */
 
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import EventForm from '../components/EventForm.jsx'
 import { ErrorMessage } from '../components/RequestFeedback.jsx'
 import useAppState from '../state/useAppState.js'
@@ -10,6 +10,7 @@ import useAppState from '../state/useAppState.js'
 export default function CreateEventPage() {
   const { state, submitEvent } = useAppState()
   const navigate = useNavigate()
+  const location = useLocation()
   const [error, setError] = useState(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
@@ -31,11 +32,15 @@ export default function CreateEventPage() {
   }
   if (state.auth.status !== 'authenticated') {
     return (
-      <section className="content-panel">
-        <h1>Inicia sesión para crear un evento</h1>
-        <p>La creación de eventos está disponible para cuentas autenticadas.</p>
+      <section aria-labelledby="create-event-access-heading" className="content-panel create-event-access">
+        <p className="eyebrow">Comparte algo que valga la pena vivir</p>
+        <h1 id="create-event-access-heading">Inicia sesión para crear un evento</h1>
+        <p>Necesitas una cuenta para organizar un evento. Inicia sesión o crea una cuenta para continuar.</p>
         {state.auth.status === 'error' && <ErrorMessage error={state.auth.error} />}
-        <Link className="button button-primary" state={{ from: '/events/new' }} to="/login">Iniciar sesión</Link>
+        <div className="button-row">
+          <Link className="button button-primary" state={{ from: `${location.pathname}${location.search}` }} to="/login">Iniciar sesión</Link>
+          <Link className="button button-secondary" state={{ from: `${location.pathname}${location.search}` }} to="/register">Crear una cuenta</Link>
+        </div>
       </section>
     )
   }

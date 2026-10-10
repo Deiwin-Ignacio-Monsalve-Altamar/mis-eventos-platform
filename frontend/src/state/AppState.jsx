@@ -58,8 +58,9 @@ export function AppProvider({ children }) {
 
   const signUp = useCallback((account) => registerAccount(account), [])
 
-  const signOut = useCallback(async () => {
+  const signOut = useCallback(async (onSuccess) => {
     await logout()
+    await onSuccess?.()
     dispatch({ type: 'auth/logout-success' })
   }, [])
 

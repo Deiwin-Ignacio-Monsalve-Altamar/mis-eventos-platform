@@ -267,25 +267,26 @@ test('shared edit form is prefilled with the event returned by the API', async (
   }
 })
 
-test('authenticated profile renders the logout action', async () => {
+test('authenticated site footer retains profile navigation without a logout action', async () => {
   const vite = await createTestServer()
   try {
-    const { default: ProfilePage } = await vite.ssrLoadModule('/src/pages/ProfilePage.jsx')
+    const { default: SiteFooter } = await vite.ssrLoadModule('/src/components/SiteFooter.jsx')
     const { default: AppStateContext } = await vite.ssrLoadModule('/src/state/AppStateContext.js')
     const markup = renderToString(
       createElement(
         StaticRouter,
-        { location: '/profile' },
+        { location: '/events' },
         createElement(AppStateContext.Provider, {
           value: {
             state: { auth: { status: 'authenticated', user: { id: 5, first_name: 'Alex', last_name: 'Rivera', email: 'alex@example.test' } } },
             signOut: async () => {},
           },
-        }, createElement(ProfilePage)),
+        }, createElement(SiteFooter, { auth: { status: 'authenticated', user: { id: 5 } } })),
       ),
     )
 
-    assert.match(markup, /Cerrar sesión/)
+    assert.match(markup, /href="\/profile"[^>]*>Mi perfil/)
+    assert.doesNotMatch(markup, /Cerrar sesión/)
   } finally {
     await vite.close()
   }

@@ -1,7 +1,7 @@
 /** Show the current profile loaded from the authenticated API endpoint. */
 
 import { useEffect, useRef, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { getMyEventDashboard, listMyEvents } from '../api/events.js'
 import { cancelMyEventRegistration, getMyRegistrationSummary, listMyRegistrations } from '../api/registrations.js'
 import AuthErrorMessage from '../components/AuthErrorMessage.jsx'
@@ -12,20 +12,16 @@ import { getEventStatusLabel } from '../utils/eventPresentation.js'
 
 /** Render the user's public identity and API-backed event registrations. */
 export default function ProfilePage() {
-  const { state, signOut } = useAppState()
-  const navigate = useNavigate()
+  const { state } = useAppState()
   const { auth } = state
   const [registrationQuery, setRegistrationQuery] = useState(null)
   const [page, setPage] = useState(1)
   const [refresh, setRefresh] = useState(0)
   const [activityResponse, setActivityResponse] = useState(null)
   const [activityRetry, setActivityRetry] = useState(0)
-  const [logoutBusy, setLogoutBusy] = useState(false)
-  const [logoutError, setLogoutError] = useState(null)
   const [registrationBusyId, setRegistrationBusyId] = useState(null)
   const [registrationActionError, setRegistrationActionError] = useState(null)
   const [registrationActionNotice, setRegistrationActionNotice] = useState('')
-  const logoutRequest = useRef(false)
   const cancellationRequest = useRef(false)
   const activityKey = `${auth.user?.id ?? 'anonymous'}:${activityRetry}`
   const activity = activityResponse?.key === activityKey ? activityResponse.data : null
@@ -67,22 +63,6 @@ export default function ProfilePage() {
     })
     return () => { active = false }
   }, [auth.status, auth.user?.id, activityRetry, activityKey])
-
-  async function handleLogout() {
-    if (logoutRequest.current) return
-    logoutRequest.current = true
-    setLogoutBusy(true)
-    setLogoutError(null)
-    try {
-      await signOut()
-      navigate('/login', { replace: true })
-    } catch (error) {
-      setLogoutError(error)
-    } finally {
-      logoutRequest.current = false
-      setLogoutBusy(false)
-    }
-  }
 
   async function handleCancelRegistration(registration) {
     if (cancellationRequest.current || registration.status !== 'registered') return
@@ -139,13 +119,9 @@ export default function ProfilePage() {
           <p className="eyebrow">Tu cuenta</p>
           <h1>Te damos la bienvenida, {auth.user.first_name}</h1>
           <p>{auth.user.email}</p>
-          <button className="button button-secondary" disabled={logoutBusy} onClick={handleLogout} type="button">
-            {logoutBusy ? 'Cerrando sesión…' : 'Cerrar sesión'}
-          </button>
         </div>
         <p className="profile-welcome-note">Los buenos momentos empiezan cuando hacemos espacio para encontrarnos.</p>
       </header>
-      {logoutError && <ErrorMessage error={logoutError} />}
 
       <section aria-labelledby="activity-heading" className="profile-activity">
         <div className="profile-section-heading">

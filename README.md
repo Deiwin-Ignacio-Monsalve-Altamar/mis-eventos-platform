@@ -5,7 +5,7 @@ Full-stack event management application built with Flask, React, PostgreSQL, and
 
 - [Backend setup, API endpoints, migrations, and tests](backend/README.md)
 - [Frontend setup, application routes, and tests](frontend/README.md)
-- [Frontend visual design and accessibility guidance](docs/frontend-design.md)
+- [Frontend visual design and accessibility guidance](frontend/docs/frontend-design.md)
 - [Integration test scope and command](backend/tests/integration/README.md)
 
 ## Database and migrations
