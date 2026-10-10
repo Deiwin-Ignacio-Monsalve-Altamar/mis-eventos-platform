@@ -663,7 +663,7 @@ def run_frontend_tests() -> tuple[int, dict[str, Any]]:
 def render_bar(value: float | None, maximum: float, color: str) -> str:
     """Render a labeled SVG bar without substituting missing measurements."""
     if value is None:
-        return '<span class="unavailable">No disponible</span>'
+        return '<span class="unavailable">Unavailable</span>'
     width = 0 if maximum <= 0 else max(0, min(100, value / maximum * 100))
     return (
         f'<div class="bar-track"><div class="bar-fill" style="width:{width:.2f}%;'
@@ -688,10 +688,10 @@ def render_file_table(suites: dict[str, dict[str, Any]]) -> str:
                 f"<td>{details or '—'}</td></tr>"
             )
     if not rows:
-        return '<p class="muted">No hay datos de archivos para esta ejecución.</p>'
+        return '<p class="muted">No file data is available for this run.</p>'
     return (
-        "<table><thead><tr><th>Suite</th><th>Archivo</th><th>Líneas</th>"
-        "<th>Líneas sin cubrir</th></tr></thead><tbody>"
+        "<table><thead><tr><th>Suite</th><th>File</th><th>Lines</th>"
+        "<th>Uncovered lines</th></tr></thead><tbody>"
         + "".join(rows)
         + "</tbody></table>"
     )
@@ -706,11 +706,11 @@ def write_report(suites: dict[str, dict[str, Any]], generated_at: str) -> None:
         item.get("failed", 0) + item.get("errors", 0) for item in suites.values()
     )
     overall_status = (
-        "fallido"
+        "failed"
         if any(item.get("status") == "failed" for item in suites.values())
-        else "correcto"
+        else "passed"
         if all(item.get("status") == "passed" for item in suites.values())
-        else "incompleto"
+        else "incomplete"
     )
     report_data = {
         "generated_at": generated_at,
@@ -749,7 +749,7 @@ def write_report(suites: dict[str, dict[str, Any]], generated_at: str) -> None:
         test_rows.append(
             f'<div class="chart-row"><strong>{suite_name.title()}</strong>'
             f'<div class="bar-track"><div class="bar-fill" style="width:{width:.2f}%;background:#f52d91"></div></div>'
-            f"<span>{item.get('tests', 0)} pruebas</span></div>"
+            f"<span>{item.get('tests', 0)} tests</span></div>"
         )
         item["status_class"] = status_class
 
@@ -757,12 +757,12 @@ def write_report(suites: dict[str, dict[str, Any]], generated_at: str) -> None:
     for suite_name in ("backend", "frontend"):
         item = suites[suite_name]
         line_cover = item.get("line_coverage")
-        cover_text = "No disponible" if line_cover is None else f"{line_cover:.2f}%"
+        cover_text = "Unavailable" if line_cover is None else f"{line_cover:.2f}%"
         secondary_metrics = []
         if item.get("branch_coverage") is not None:
-            secondary_metrics.append(f"ramas {item['branch_coverage']:.2f}%")
+            secondary_metrics.append(f"branches {item['branch_coverage']:.2f}%")
         if item.get("function_coverage") is not None:
-            secondary_metrics.append(f"funciones {item['function_coverage']:.2f}%")
+            secondary_metrics.append(f"functions {item['function_coverage']:.2f}%")
         metric_detail = " · ".join(secondary_metrics)
         metric_detail_html = (
             f'<p class="muted">{html.escape(metric_detail)}</p>'
@@ -775,39 +775,39 @@ def write_report(suites: dict[str, dict[str, Any]], generated_at: str) -> None:
             relative_report = Path(html_report).relative_to(REPORTS)
             report_link = (
                 f'<p><a href="{html.escape(relative_report.as_posix())}">'
-                "Abrir reporte detallado</a></p>"
+                "Open detailed report</a></p>"
             )
         cards.append(
             f'<article class="card {item["status_class"]}"><h2>{suite_name.title()}</h2>'
-            f'<p class="coverage">{cover_text}</p><p>{item.get("passed", 0)} aprobadas · '
-            f"{item.get('failed', 0)} fallidas · {item.get('skipped', 0)} omitidas · "
-            f'{item.get("errors", 0)} errores</p><p class="state">{html.escape(item.get("status", "not run"))}</p>'
+            f'<p class="coverage">{cover_text}</p><p>{item.get("passed", 0)} passed · '
+            f"{item.get('failed', 0)} failed · {item.get('skipped', 0)} skipped · "
+            f'{item.get("errors", 0)} errors</p><p class="state">{html.escape(item.get("status", "not run"))}</p>'
             f"{metric_detail_html}{report_link}</article>"
         )
 
     html_page = f"""<!doctype html>
-<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Mis Eventos · cobertura de pruebas</title>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mis Eventos · test coverage</title>
 <style>
 :root{{color-scheme:light;--ink:#20204a;--muted:#667085;--purple:#6d3bff;--pink:#f52d91;--line:#e7e5ee;--surface:#fff;--bg:#f7f8ff}}
 *{{box-sizing:border-box}}body{{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,sans-serif}}
 main{{max-width:1100px;margin:0 auto;padding:36px 22px 64px}}header{{display:flex;justify-content:space-between;align-items:end;gap:18px;margin-bottom:24px}}
-h1{{font-size:clamp(1.8rem,4vw,2.8rem);line-height:1.1;margin:0}}h2{{font-size:1.05rem;margin:0 0 10px}}.muted{{color:var(--muted)}}.status{{font-weight:700;color:{"#087a58" if overall_status == "correcto" else "#b42318" if overall_status == "fallido" else "#805b00"}}}
+h1{{font-size:clamp(1.8rem,4vw,2.8rem);line-height:1.1;margin:0}}h2{{font-size:1.05rem;margin:0 0 10px}}.muted{{color:var(--muted)}}.status{{font-weight:700;color:{"#087a58" if overall_status == "passed" else "#b42318" if overall_status == "failed" else "#805b00"}}}
 .cards{{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}}.card,.panel{{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:20px;box-shadow:0 4px 18px #20204a0a}}
 .card.bad{{border-color:#f4a9a9}}.coverage{{font-size:2rem;font-weight:750;margin:8px 0}}.state{{text-transform:capitalize;color:var(--muted)}}section{{margin-top:22px}}.chart-row{{display:grid;grid-template-columns:110px minmax(100px,1fr) 105px;align-items:center;gap:12px;margin:14px 0}}
 .bar-track{{height:16px;background:#efedf5;border-radius:999px;overflow:hidden}}.bar-fill{{height:100%;border-radius:inherit}}.unavailable{{color:var(--muted);font-size:.9rem}}
 table{{width:100%;border-collapse:collapse;font-size:.92rem}}th,td{{padding:10px;text-align:left;border-bottom:1px solid var(--line)}}th{{color:var(--muted)}}footer{{margin-top:28px;color:var(--muted);font-size:.85rem}}
 @media(max-width:720px){{header{{display:block}}.cards{{grid-template-columns:1fr}}.chart-row{{grid-template-columns:78px minmax(80px,1fr) 82px;gap:8px;font-size:.85rem}}main{{padding:24px 14px}}.panel{{overflow-x:auto}}}}
 </style></head><body><main>
-<header><div><h1>Reporte de pruebas</h1><p class="muted">Mis Eventos · ejecución local</p></div><div class="status">Estado general: {overall_status}</div></header>
-<div class="cards">{"".join(cards)}<article class="card"><h2>Total combinado</h2><p class="coverage">{total_tests}</p><p>{total_passed} aprobadas · {failed_tests} fallidas o con error</p></article></div>
-<section class="panel"><h2>Cobertura de líneas</h2>{"".join(coverage_rows)}</section>
-<section class="panel"><h2>Pruebas ejecutadas</h2>{"".join(test_rows)}</section>
-<section class="panel"><h2>Archivos con menor cobertura</h2>{render_file_table(suites)}</section>
-<footer>Generado: {html.escape(generated_at)} · Los valores reflejan únicamente esta ejecución; suites no ejecutadas aparecen como no disponibles.</footer>
+<header><div><h1>Test report</h1><p class="muted">Mis Eventos · local run</p></div><div class="status">Overall status: {overall_status}</div></header>
+<div class="cards">{"".join(cards)}<article class="card"><h2>Combined total</h2><p class="coverage">{total_tests}</p><p>{total_passed} passed · {failed_tests} failed or errored</p></article></div>
+<section class="panel"><h2>Line coverage</h2>{"".join(coverage_rows)}</section>
+<section class="panel"><h2>Tests run</h2>{"".join(test_rows)}</section>
+<section class="panel"><h2>Files with the lowest coverage</h2>{render_file_table(suites)}</section>
+<footer>Generated: {html.escape(generated_at)} · Values reflect this run only; suites not run are shown as unavailable.</footer>
 </main></body></html>"""
     (REPORTS / "index.html").write_text(html_page, encoding="utf-8")
-    print(f"HTML conjunto: {REPORTS / 'index.html'}")
+    print(f"Combined HTML report: {REPORTS / 'index.html'}")
 
 
 def empty_suite(status: str = "not run") -> dict[str, Any]:
@@ -828,13 +828,11 @@ def empty_suite(status: str = "not run") -> dict[str, Any]:
 def print_suite_summary(name: str, result: dict[str, Any]) -> None:
     """Print normalized test totals and the current line coverage measurement."""
     line_coverage = result.get("line_coverage")
-    coverage_text = (
-        "no disponible" if line_coverage is None else f"{line_coverage:.2f}%"
-    )
+    coverage_text = "unavailable" if line_coverage is None else f"{line_coverage:.2f}%"
     print(
-        f"{name}: {result.get('passed', 0)} aprobadas, {result.get('failed', 0)} fallidas, "
-        f"{result.get('skipped', 0)} omitidas, {result.get('errors', 0)} errores; "
-        f"cobertura de líneas {coverage_text} ({result.get('status')})."
+        f"{name}: {result.get('passed', 0)} passed, {result.get('failed', 0)} failed, "
+        f"{result.get('skipped', 0)} skipped, {result.get('errors', 0)} errors; "
+        f"line coverage {coverage_text} ({result.get('status')})."
     )
 
 
@@ -858,8 +856,8 @@ def run_tests(target: str) -> int:
     total_skipped = sum(item.get("skipped", 0) for item in suites.values())
     total_errors = sum(item.get("errors", 0) for item in suites.values())
     print(
-        f"Total: {total_tests} tests, {total_passed} aprobadas, {total_failed} fallidas, "
-        f"{total_skipped} omitidas, {total_errors} errores."
+        f"Total: {total_tests} tests, {total_passed} passed, {total_failed} failed, "
+        f"{total_skipped} skipped, {total_errors} errors."
     )
     return 1 if any(code != 0 for code in exit_codes) else 0
 

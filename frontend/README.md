@@ -1,99 +1,99 @@
-# Frontend de Mis Eventos
+# Mis Eventos Frontend
 
-Aplicación web para descubrir eventos, crear y administrar eventos propios, gestionar sesiones e inscripciones. Utiliza React 19, React Router, Context/Reducer y Vite. Se comunica con la API Flask del backend mediante `src/api/`.
+Web application for discovering events, creating and managing events, managing sessions, and registering. It uses React 19, React Router, Context/Reducer, and Vite, and communicates with the Flask API through `src/api/`.
 
-## Arquitectura y flujo
+## Architecture and request flow
 
-- `src/pages/`: catálogo, detalle, acceso, perfil, eventos propios e inscripciones.
-- `src/components/`: formularios, navegación, listas, estados de carga/error y controles compartidos.
-- `src/api/`: funciones por recurso y cliente HTTP compartido.
-- `src/state/`: contexto, reducer y estado compartido de autenticación y eventos.
-- `src/utils/`: validación, formatos y reglas de presentación.
-- `src/App.jsx` registra las rutas; `src/App.css` contiene estilos de la aplicación.
+- `src/pages/`: event catalog and details, authentication, profile, owned events, and registrations.
+- `src/components/`: forms, navigation, lists, loading and error states, and shared controls.
+- `src/api/`: resource-specific API functions and the shared HTTP client.
+- `src/state/`: context, reducers, and shared authentication and event state.
+- `src/utils/`: validation, formatting, and presentation rules.
+- `src/App.jsx` registers routes; `src/App.css` contains application styles.
 
 ```mermaid
 flowchart LR
-    U[Usuario] --> R[React Router]
-    R --> P[Página]
-    P --> C[Componentes y estado Context/Reducer]
-    C --> A[API por recurso]
-    A --> H[Cliente HTTP compartido]
-    H -->|credentials include y JSON| B[Backend Flask /api/v1]
+    U[User] --> R[React Router]
+    R --> P[Page]
+    P --> C[Components and Context/Reducer state]
+    C --> A[Resource API]
+    A --> H[Shared HTTP client]
+    H -->|credentials include and JSON| B[Flask backend /api/v1]
     B --> H
-    H -->|respuesta correcta| S[Reducer actualiza estado]
-    S --> UI[La interfaz muestra datos o confirmación]
-    H -->|HTTP o red fallidos| E[ApiError y telemetría local]
-    E --> F[Mensaje de error en la página]
+    H -->|success response| S[Reducer updates state]
+    S --> UI[The UI displays data or confirmation]
+    H -->|HTTP or network error| E[ApiError and local telemetry]
+    E --> F[Page error message]
 ```
 
-La aplicación consulta `GET /api/v1/auth/me` al arrancar. El login envía credenciales al backend; el backend establece la cookie HttpOnly `access_token`. El frontend no guarda contraseñas ni tokens en almacenamiento del navegador y usa `credentials: 'include'` en cada petición. Las rutas privadas esperan a confirmar la sesión y redirigen a `/login` cuando no hay usuario autenticado. La administración de un evento se habilita cuando el endpoint de propietario confirma el permiso; el backend vuelve a aplicar la autorización.
+On startup, the application requests `GET /api/v1/auth/me`. Login sends credentials to the backend, which sets the HttpOnly `access_token` cookie. The frontend does not store passwords or tokens in browser storage and sends `credentials: 'include'` with each request. Protected routes wait for session confirmation and redirect to `/login` when the user is unauthenticated. Event management is enabled after the owner endpoint confirms permission; the backend enforces authorization again.
 
 ```mermaid
 sequenceDiagram
-    actor Usuario
-    participant App as Estado de la aplicación
+    actor User
+    participant App as Application state
     participant Login as LoginPage
-    participant API as Cliente HTTP
-    participant Backend as API Flask
-    App->>Backend: GET /auth/me al iniciar (cookie si existe)
-    Backend-->>App: Perfil público o 401
-    App-->>Usuario: Muestra la vista según el estado de sesión
-    Usuario->>Login: Envía correo y contraseña
+    participant API as HTTP client
+    participant Backend as Flask API
+    App->>Backend: GET /auth/me on startup (cookie if present)
+    Backend-->>App: Public profile or 401
+    App-->>User: Show the view for the current session state
+    User->>Login: Enter email and password
     Login->>API: POST /auth/login
-    API->>Backend: JSON con credenciales
-    Backend-->>API: Perfil público y Set-Cookie HttpOnly
-    API-->>Login: Perfil público
-    Login->>App: Actualiza el usuario autenticado
-    App-->>Usuario: Navega a la página solicitada
+    API->>Backend: JSON credentials
+    Backend-->>API: Public profile and Set-Cookie HttpOnly
+    API-->>Login: Public profile
+    Login->>App: Update authenticated user
+    App-->>User: Navigate to the requested page
 ```
 
-Las respuestas no exitosas se convierten en `ApiError`; las páginas muestran mensajes comprensibles y estados de carga o error. La telemetría del frontend se escribe localmente en la consola del navegador y no transmite información a un colector.
+Non-success responses become `ApiError` instances; pages show readable messages and loading or error states. Frontend telemetry is written to the browser console and is not sent to a collector.
 
-## Requisitos, configuración y ejecución
+## Requirements, configuration, and development
 
-Se requiere Node.js 22 o superior y npm. Desde `frontend/`, instala de forma reproducible con el lockfile:
+Node.js 22 or later and npm are required. From `frontend/`, install the locked dependencies with:
 
 ```sh
 npm ci
 npm run dev
 ```
 
-Vite sirve la aplicación en <http://localhost:5173>. La configuración local está en `.env.example`; copia el archivo a `.env` solo si necesitas personalizarla. Vite lee esas variables al iniciar y las variables `VITE_*` se incorporan al código visible en el navegador, así que no pongas secretos allí.
+Vite serves the application at <http://localhost:5173>. Local settings are shown in `.env.example`; copy it to `.env` only if you need overrides. Vite reads these variables on startup. `VITE_*` variables are included in browser code, so do not put secrets there.
 
-| Variable | Uso |
+| Variable | Purpose |
 | --- | --- |
-| `VITE_API_BASE_URL` | Prefijo de API que usa el cliente browser; predeterminado `/api/v1`. Es público. |
-| `API_PROXY_TARGET` | Destino del proxy Vite `/api`; predeterminado `http://localhost:5000`. En Compose se configura como `http://backend:5000`. |
-| `VITE_APP_ENVIRONMENT`, `VITE_APP_VERSION` | Etiquetas de entorno/versión para eventos de telemetría local; valores predeterminados `local` y `dev`. Son públicos. |
+| `VITE_API_BASE_URL` | API prefix used by the browser client; defaults to `/api/v1`. Public. |
+| `API_PROXY_TARGET` | Target for the Vite `/api` proxy; defaults to `http://localhost:5000`. Compose sets it to `http://backend:5000`. |
+| `VITE_APP_ENVIRONMENT`, `VITE_APP_VERSION` | Environment and version labels for local telemetry events; default to `local` and `dev`. Public. |
 
-En desarrollo, el navegador solicita `/api/v1` en el mismo origen de Vite y este reenvía `/api` al backend. Así, el flujo local usa el proxy y no requiere una configuración CORS en Flask. Si configuras una URL de API entre distintos orígenes, verifica que el servidor destino permita credenciales y el origen correspondiente; el backend actual no registra una política CORS propia.
+In development, the browser requests `/api/v1` from Vite's origin, and Vite proxies `/api` to the backend. This avoids requiring Flask CORS configuration locally. If you configure a cross-origin API URL, ensure the target server allows credentials and the frontend origin; the current backend does not register its own CORS policy.
 
-En Docker Compose, el frontend mantiene el puerto `5173` y el proxy apunta al servicio `backend`; la URL del navegador sigue siendo <http://localhost:5173>. Para iniciar toda la aplicación, preparar las variables y aplicar migraciones, sigue la [guía del backend](../backend/README.md#probar-la-aplicación-completa) o ejecuta desde la raíz `make setup` y `make run`.
+With Docker Compose, the frontend listens on port `5173` and its proxy targets the `backend` service; the browser URL remains <http://localhost:5173>. To configure and start the full application and apply migrations, follow the [backend guide](../backend/README.md#run-the-full-application) or run `make setup` and `make run` from the repository root.
 
-## Rutas y flujos manuales
+## Routes and manual flows
 
-| Ruta | Acceso | Función |
+| Route | Access | Purpose |
 | --- | --- | --- |
-| `/` y `/events` | Público | Catálogo, búsqueda y paginación de eventos. |
-| `/events/:eventId` | Público | Detalle, sesiones y cupos; usuarios autenticados pueden inscribirse. El creador administra el evento y sus sesiones. `?edit=1` abre la edición si tiene permiso. |
-| `/events/new` | Requiere sesión | Crear un evento. |
-| `/login`, `/register` | Público | Inicio de sesión y creación de cuenta. |
-| `/profile` | Requiere sesión | Perfil del usuario y cierre de sesión. |
-| `/my-events` | Requiere sesión | Administrar eventos propios. |
-| `/my-registrations` | Requiere sesión | Consultar, filtrar y cancelar inscripciones propias. |
+| `/` and `/events` | Public | Event catalog, search, and pagination. |
+| `/events/:eventId` | Public | Event details, sessions, and capacity; authenticated users can register. The creator manages the event and its sessions. `?edit=1` opens editing when authorized. |
+| `/events/new` | Requires a session | Create an event. |
+| `/login`, `/register` | Public | Sign in and create an account. |
+| `/profile` | Requires a session | User profile and sign-out. |
+| `/my-events` | Requires a session | Manage owned events. |
+| `/my-registrations` | Requires a session | View, filter, and cancel the user's registrations. |
 
-Para probar un recorrido en el navegador:
+To test a browser flow:
 
-1. Inicia backend y base de datos siguiendo la [guía backend](../backend/README.md#requisitos-y-configuración-local); abre Swagger en <http://localhost:5000/apidocs/> para revisar la API consumida.
-2. Abre <http://localhost:5173>, crea una cuenta o inicia sesión.
-3. Crea un evento con fecha futura desde `/events/new`. En `/my-events` puedes cambiar el estado, editar o eliminar un evento propio.
-4. En el detalle del evento agrega o modifica sesiones. La administración solo aparece para el creador.
-5. Con otra cuenta, abre el evento publicado y prueba inscribirte y cancelar la inscripción; la capacidad y las fechas determinan si se permite.
-6. Usa `/my-registrations` para revisar las inscripciones propias. Para verificar un endpoint por separado, haz login en Swagger o utiliza las peticiones y el cookie jar descritos en el [README del backend](../backend/README.md#ejemplos-con-curl).
+1. Start the backend and database using the [backend guide](../backend/README.md#requirements-and-local-setup). Open Swagger at <http://localhost:5000/apidocs/> to inspect the API.
+2. Open <http://localhost:5173>, create an account, or sign in.
+3. Create a future event at `/events/new`. At `/my-events`, you can change its status, edit it, or delete an event you own.
+4. Add or edit sessions on the event details page. Management controls appear only for the creator.
+5. With another account, open the published event and register or cancel. Availability depends on capacity and dates.
+6. Use `/my-registrations` to review your registrations. To test an endpoint separately, sign in through Swagger or use the requests and cookie jar in the [backend README](../backend/README.md#curl-examples).
 
-Swagger pertenece al backend, no es una segunda aplicación frontend: su UI está en <http://localhost:5000/apidocs/> y la especificación JSON en <http://localhost:5000/apispec_1.json> cuando el backend local está levantado. Si cambias puertos o la URL base de API, consulta la configuración correspondiente en `.env` y `vite.config.js`.
+Swagger is part of the backend, not a separate frontend application. Its UI is at <http://localhost:5000/apidocs/> and the JSON specification is at <http://localhost:5000/apispec_1.json> while the local backend is running. If ports or the API base URL change, check `.env` and `vite.config.js`.
 
-## Pruebas y build
+## Tests and build
 
 ```sh
 npm run test
@@ -102,17 +102,17 @@ npm run build
 npm run preview
 ```
 
-Las pruebas de `npm run test` usan el runner nativo de Node.js y no requieren el backend. El build de producción se escribe en `dist/`; `npm run preview` sirve ese build localmente para revisarlo.
+Tests run with `npm run test` use Node.js's built-in test runner and do not require the backend. The production build is written to `dist/`; `npm run preview` serves it locally for review.
 
-### Pruebas end-to-end con Playwright
+### Playwright end-to-end tests
 
-Instala Chromium una vez por equipo y ejecuta E2E desde este directorio:
+Install Chromium once per machine, then run E2E tests from this directory:
 
 ```sh
 npx playwright install chromium
 npm run test:e2e
 ```
 
-Desde la raíz también está disponible `make test-e2e`. Playwright inicia Vite en el puerto `4173` y los escenarios interceptan la API para que no dependan de una base de datos ni de un backend activo. La suite recorre detalle/registro, manejo de errores, permisos, edición del evento, administración de sesiones y un viewport móvil. Resultados y trazas de fallos quedan en `test-results/`, ignorado por Git.
+You can also run `make test-e2e` from the repository root. Playwright starts Vite on port `4173`; tests intercept API requests and do not require a database or running backend. The suite covers event details and registration, error handling, permissions, event editing, session management, and a mobile viewport. Results and failure traces are written to `test-results/`, which Git ignores.
 
-Si las peticiones fallan, revisa que el backend responda en `http://localhost:5000/api/v1/ready`, que `API_PROXY_TARGET` apunte al backend adecuado y la pestaña Network de las herramientas de desarrollo. La sesión depende de cookies: comprueba que `GET /auth/me` responde 200 después del login y que no se haya configurado Secure en un entorno HTTP local.
+If requests fail, check that the backend responds at `http://localhost:5000/api/v1/ready`, confirm `API_PROXY_TARGET` points to the right backend, and inspect the browser's Network tab. Sessions use cookies: verify `GET /auth/me` returns 200 after login and that Secure is not enabled for local HTTP.

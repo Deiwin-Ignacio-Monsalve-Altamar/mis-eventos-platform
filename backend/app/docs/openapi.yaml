@@ -4,23 +4,23 @@ info:
   title: Mis Eventos API
   version: 1.0.0
   description: |
-    API para gestionar cuentas, eventos, sesiones y registros de asistentes.
-    Las rutas utilizan el prefijo /api/v1.
+    API for managing accounts, events, sessions, and attendee registrations.
+    Routes use the /api/v1 prefix.
 servers:
   - url: /api/v1
-    description: Servidor de desarrollo local
+    description: Local development server
 
 tags:
   - name: Health
-    description: Estado del servicio
+    description: Service health status
   - name: Authentication
-    description: Registro, inicio de sesión y perfil
+    description: Account registration, sign-in, and profile
   - name: Events
-    description: Gestión y consulta de eventos
+    description: Event management and discovery
   - name: Registrations
-    description: Inscripciones a eventos
+    description: Event registrations
   - name: Sessions
-    description: Gestión de sesiones y asistentes
+    description: Session and attendee management
 
 components:
   securitySchemes:
