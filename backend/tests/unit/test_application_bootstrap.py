@@ -1,5 +1,7 @@
 """Verify Flask application wiring without opening external connections."""
 
+from http import HTTPStatus
+
 from flask import Flask
 
 from app.application.auth.service import AuthService
@@ -26,7 +28,7 @@ def test_application_factory_registers_routes_and_api_documentation():
 
     response = client.get("/api/v1/health")
 
-    assert response.status_code == 200
+    assert response.status_code == HTTPStatus.OK
     assert response.json == {"status": "ok"}
     assert app.config["SWAGGER"]["openapi"] == "3.0.3"
     assert app.config["SWAGGER"]["title"]
@@ -37,15 +39,15 @@ def test_application_factory_registers_routes_and_api_documentation():
 
 
 def test_flask_http_errors_use_json_and_preserve_protocol_headers():
-    """Serialize framework 404 and 405 errors without losing the Allow header."""
+    """Serialize not-found and method-not-allowed errors while preserving Allow."""
     client = create_app().test_client()
 
     missing = client.get("/not-a-route")
     wrong_method = client.post("/api/v1/health")
 
-    assert missing.status_code == 404
+    assert missing.status_code == HTTPStatus.NOT_FOUND
     assert missing.json["error"]["code"] == "not_found"
-    assert wrong_method.status_code == 405
+    assert wrong_method.status_code == HTTPStatus.METHOD_NOT_ALLOWED
     assert wrong_method.json["error"]["code"] == "method_not_allowed"
     assert "GET" in wrong_method.headers["Allow"]
 

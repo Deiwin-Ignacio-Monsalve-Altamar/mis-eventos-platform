@@ -1,5 +1,7 @@
 """Expose account registration, login, and authenticated profile endpoints."""
 
+from http import HTTPStatus
+
 from flask import Blueprint, current_app, g, jsonify, request
 
 from app.api.auth import ACCESS_TOKEN_COOKIE_NAME
@@ -22,7 +24,9 @@ def register_user():
     """Validate and create an attendee account without returning credentials."""
     request_data = request.get_json(silent=True)
     if not isinstance(request_data, dict):
-        return error_response("invalid_request", "A JSON object is required.", 400)
+        return error_response(
+            "invalid_request", "A JSON object is required.", HTTPStatus.BAD_REQUEST
+        )
 
     try:
         account = get_auth_service().register(
@@ -32,11 +36,11 @@ def register_user():
             last_name=request_data.get("last_name"),
         )
     except ValidationError as error:
-        return error_response("validation_error", str(error), 400)
+        return error_response("validation_error", str(error), HTTPStatus.BAD_REQUEST)
     except DuplicateAccountError as error:
-        return error_response("account_exists", str(error), 409)
+        return error_response("account_exists", str(error), HTTPStatus.CONFLICT)
 
-    return jsonify({"user": _public_user(account)}), 201
+    return jsonify({"user": _public_user(account)}), HTTPStatus.CREATED
 
 
 @auth_bp.post("/login")
@@ -44,7 +48,9 @@ def login_user():
     """Verify credentials and set an expiring HttpOnly access-token cookie."""
     request_data = request.get_json(silent=True)
     if not isinstance(request_data, dict):
-        return error_response("invalid_request", "A JSON object is required.", 400)
+        return error_response(
+            "invalid_request", "A JSON object is required.", HTTPStatus.BAD_REQUEST
+        )
 
     try:
         account, token = get_auth_service().authenticate(
@@ -53,12 +59,16 @@ def login_user():
         )
     except AuthenticationError:
         return error_response(
-            "invalid_credentials", "Email or password is incorrect.", 401
+            "invalid_credentials",
+            "Email or password is incorrect.",
+            HTTPStatus.UNAUTHORIZED,
         )
     except TokenConfigurationError:
         current_app.logger.error("JWT signing key is not configured.")
         return error_response(
-            "authentication_unavailable", "Authentication is unavailable.", 503
+            "authentication_unavailable",
+            "Authentication is unavailable.",
+            HTTPStatus.SERVICE_UNAVAILABLE,
         )
 
     response = jsonify({"user": _public_user(account)})
@@ -71,20 +81,20 @@ def login_user():
         samesite="Lax",
         path="/api/v1",
     )
-    return response, 200
+    return response, HTTPStatus.OK
 
 
 @auth_bp.get("/me")
 @token_required
 def get_current_user():
     """Return the authenticated user's public profile."""
-    return jsonify({"user": _public_user(g.current_user)}), 200
+    return jsonify({"user": _public_user(g.current_user)}), HTTPStatus.OK
 
 
 @auth_bp.post("/logout")
 def logout_user():
     """Expire the browser's authentication cookie without changing stored data."""
-    response = current_app.response_class(status=204)
+    response = current_app.response_class(status=HTTPStatus.NO_CONTENT)
     response.delete_cookie(
         ACCESS_TOKEN_COOKIE_NAME,
         path="/api/v1",

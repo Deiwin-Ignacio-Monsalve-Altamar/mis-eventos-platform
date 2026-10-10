@@ -3,6 +3,7 @@
 import json
 import runpy
 from datetime import UTC, datetime
+from http import HTTPStatus
 from io import StringIO
 from unittest.mock import Mock
 
@@ -56,7 +57,7 @@ def test_http_metrics_use_normalized_routes_and_exclude_metrics_endpoint(monkeyp
 
     def observed_route(item_id):
         """Return an observed response with a caller-controlled path identifier."""
-        return {"id": item_id}, 200
+        return {"id": item_id}, HTTPStatus.OK
 
     app.add_url_rule(
         "/observed/<int:item_id>", "observed_route", observed_route, methods=["GET"]
@@ -66,10 +67,10 @@ def test_http_metrics_use_normalized_routes_and_exclude_metrics_endpoint(monkeyp
     metrics_response = client.get("/metrics")
     exposition = metrics_response.get_data(as_text=True)
 
-    assert response.status_code == 200
+    assert response.status_code == HTTPStatus.OK
     assert response.headers["X-Request-ID"] == "trace-7"
     assert (
-        'mis_eventos_http_requests_total{method="GET",route="/observed/<int:item_id>",status_code="200"} 1.0'
+        f'mis_eventos_http_requests_total{{method="GET",route="/observed/<int:item_id>",status_code="{HTTPStatus.OK.value}"}} 1.0'
         in exposition
     )
     assert "mis_eventos_http_request_duration_seconds_bucket" in exposition
@@ -85,15 +86,15 @@ def test_liveness_is_independent_of_database_and_readiness_checks_configuration(
     app = create_app()
     client = app.test_client()
 
-    assert client.get("/api/v1/live").status_code == 200
+    assert client.get("/api/v1/live").status_code == HTTPStatus.OK
     response = client.get("/api/v1/ready")
 
-    assert response.status_code == 503
+    assert response.status_code == HTTPStatus.SERVICE_UNAVAILABLE
     assert response.json == {"status": "unavailable", "dependency": "configuration"}
 
 
 def test_readiness_returns_unavailable_when_database_connection_fails(monkeypatch):
-    """Return 503 without exposing connection details when PostgreSQL is down."""
+    """Return service unavailable without exposing database connection details."""
     monkeypatch.setenv("JWT_SECRET_KEY", "s" * 40)
     app = create_app()
     app.config.update(TESTING=True)
@@ -107,7 +108,7 @@ def test_readiness_returns_unavailable_when_database_connection_fails(monkeypatc
 
     response = app.test_client().get("/api/v1/ready")
 
-    assert response.status_code == 503
+    assert response.status_code == HTTPStatus.SERVICE_UNAVAILABLE
     assert response.json == {"status": "unavailable", "dependency": "database"}
 
 
@@ -140,7 +141,7 @@ def test_readiness_returns_ok_when_configuration_and_database_are_available(
 
     response = app.test_client().get("/api/v1/ready")
 
-    assert response.status_code == 200
+    assert response.status_code == HTTPStatus.OK
     assert response.json == {"status": "ok"}
 
 
@@ -169,7 +170,7 @@ def test_unexpected_http_exception_is_structured_once_and_sensitive_values_are_r
         handler.setStream(previous_stream)
     output = stream.getvalue()
 
-    assert response.status_code == 500
+    assert response.status_code == HTTPStatus.INTERNAL_SERVER_ERROR
     assert response.json == {
         "error": {"code": "internal_error", "message": "An unexpected error occurred."}
     }

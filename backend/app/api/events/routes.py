@@ -1,5 +1,7 @@
 """Expose authenticated endpoints for creating and editing events."""
 
+from http import HTTPStatus
+
 from flask import Blueprint, g, jsonify, request
 
 from app.api.auth.decorators import token_required
@@ -32,7 +34,7 @@ def list_events():
             search_query=request.args.get("q"),
         )
     except ValidationError as error:
-        return error_response("validation_error", str(error), 400)
+        return error_response("validation_error", str(error), HTTPStatus.BAD_REQUEST)
 
     total_pages = (page.total + page.page_size - 1) // page.page_size
     return jsonify(
@@ -45,7 +47,7 @@ def list_events():
                 "total_pages": total_pages,
             },
         }
-    ), 200
+    ), HTTPStatus.OK
 
 
 @event_bp.get("/events/<int:event_id>")
@@ -54,9 +56,9 @@ def get_event(event_id: int):
     try:
         event = get_event_service().get_by_id(event_id)
     except NotFoundError as error:
-        return error_response("not_found", str(error), 404)
+        return error_response("not_found", str(error), HTTPStatus.NOT_FOUND)
 
-    return jsonify({"event": _serialize_event(event)}), 200
+    return jsonify({"event": _serialize_event(event)}), HTTPStatus.OK
 
 
 @event_bp.get("/events/mine")
@@ -67,7 +69,7 @@ def list_my_events():
         return error_response(
             "invalid_request",
             "Event ownership is determined by the authenticated account.",
-            400,
+            HTTPStatus.BAD_REQUEST,
         )
     try:
         page = get_event_service().list_my_events(
@@ -78,15 +80,17 @@ def list_my_events():
             request.args.get("status"),
         )
     except ValidationError as error:
-        return error_response("validation_error", str(error), 400)
-    return jsonify(_serialize_event_page(page)), 200
+        return error_response("validation_error", str(error), HTTPStatus.BAD_REQUEST)
+    return jsonify(_serialize_event_page(page)), HTTPStatus.OK
 
 
 @event_bp.get("/events/mine/summary")
 @token_required
 def my_event_dashboard():
     """Return status and date metrics for events owned by the current user."""
-    return jsonify({"summary": get_event_service().dashboard(g.current_user.id)}), 200
+    return jsonify(
+        {"summary": get_event_service().dashboard(g.current_user.id)}
+    ), HTTPStatus.OK
 
 
 @event_bp.get("/events/mine/<int:event_id>")
@@ -96,8 +100,8 @@ def get_my_event(event_id: int):
     try:
         event = get_event_service().get_my_event(event_id, g.current_user.id)
     except NotFoundError as error:
-        return error_response("not_found", str(error), 404)
-    return jsonify({"event": _serialize_event(event)}), 200
+        return error_response("not_found", str(error), HTTPStatus.NOT_FOUND)
+    return jsonify({"event": _serialize_event(event)}), HTTPStatus.OK
 
 
 @event_bp.post("/events")
@@ -106,16 +110,18 @@ def create_event():
     """Create an event attributed to the authenticated user."""
     request_data = request.get_json(silent=True)
     if not isinstance(request_data, dict):
-        return error_response("invalid_request", "A JSON object is required.", 400)
+        return error_response(
+            "invalid_request", "A JSON object is required.", HTTPStatus.BAD_REQUEST
+        )
 
     try:
         event = get_event_service().create(
             _editable_values(request_data), creator_id=g.current_user.id
         )
     except ValidationError as error:
-        return error_response("validation_error", str(error), 400)
+        return error_response("validation_error", str(error), HTTPStatus.BAD_REQUEST)
 
-    return jsonify({"event": _serialize_event(event)}), 201
+    return jsonify({"event": _serialize_event(event)}), HTTPStatus.CREATED
 
 
 @event_bp.patch("/events/<int:event_id>")
@@ -124,7 +130,9 @@ def update_event(event_id: int):
     """Update supplied fields on an existing event after token validation."""
     request_data = request.get_json(silent=True)
     if not isinstance(request_data, dict):
-        return error_response("invalid_request", "A JSON object is required.", 400)
+        return error_response(
+            "invalid_request", "A JSON object is required.", HTTPStatus.BAD_REQUEST
+        )
     expected_version = request_data.get("version")
     if (
         isinstance(expected_version, bool)
@@ -132,7 +140,9 @@ def update_event(event_id: int):
         or expected_version < 1
     ):
         return error_response(
-            "invalid_request", "A positive integer version is required.", 400
+            "invalid_request",
+            "A positive integer version is required.",
+            HTTPStatus.BAD_REQUEST,
         )
 
     try:
@@ -145,13 +155,13 @@ def update_event(event_id: int):
     except ConcurrencyConflictError as error:
         return concurrency_conflict_response(str(error), error.current_version)
     except ValidationError as error:
-        return error_response("validation_error", str(error), 400)
+        return error_response("validation_error", str(error), HTTPStatus.BAD_REQUEST)
     except NotFoundError as error:
-        return error_response("not_found", str(error), 404)
+        return error_response("not_found", str(error), HTTPStatus.NOT_FOUND)
     except AuthorizationError as error:
-        return error_response("forbidden", str(error), 403)
+        return error_response("forbidden", str(error), HTTPStatus.FORBIDDEN)
 
-    return jsonify({"event": _serialize_event(event)}), 200
+    return jsonify({"event": _serialize_event(event)}), HTTPStatus.OK
 
 
 @event_bp.delete("/events/<int:event_id>")
@@ -161,13 +171,13 @@ def delete_event(event_id: int):
     try:
         get_event_service().delete(event_id, creator_id=g.current_user.id)
     except NotFoundError as error:
-        return error_response("not_found", str(error), 404)
+        return error_response("not_found", str(error), HTTPStatus.NOT_FOUND)
     except RelatedRecordsError as error:
-        return error_response("related_records", str(error), 409)
+        return error_response("related_records", str(error), HTTPStatus.CONFLICT)
     except AuthorizationError as error:
-        return error_response("forbidden", str(error), 403)
+        return error_response("forbidden", str(error), HTTPStatus.FORBIDDEN)
 
-    return "", 204
+    return "", HTTPStatus.NO_CONTENT
 
 
 @event_bp.get("/registrations/me")
@@ -178,7 +188,7 @@ def list_my_event_registrations():
         return error_response(
             "invalid_request",
             "Registrations can only be listed for the current user.",
-            400,
+            HTTPStatus.BAD_REQUEST,
         )
     try:
         page = get_event_registration_service().list_for_user(
@@ -189,7 +199,7 @@ def list_my_event_registrations():
             period=request.args.get("period"),
         )
     except ValidationError as error:
-        return error_response("validation_error", str(error), 400)
+        return error_response("validation_error", str(error), HTTPStatus.BAD_REQUEST)
 
     total_pages = (page.total + page.page_size - 1) // page.page_size
     return jsonify(
@@ -210,7 +220,7 @@ def list_my_event_registrations():
                 "total_pages": total_pages,
             },
         }
-    ), 200
+    ), HTTPStatus.OK
 
 
 @event_bp.get("/events/<int:event_id>/capacity")
@@ -219,8 +229,8 @@ def event_registration_capacity(event_id: int):
     try:
         capacity = get_event_registration_service().capacity_for_event(event_id)
     except NotFoundError as error:
-        return error_response("not_found", str(error), 404)
-    return jsonify(capacity), 200
+        return error_response("not_found", str(error), HTTPStatus.NOT_FOUND)
+    return jsonify(capacity), HTTPStatus.OK
 
 
 @event_bp.get("/registrations/me/summary")
@@ -233,7 +243,7 @@ def my_registration_summary():
                 g.current_user.id
             )
         }
-    ), 200
+    ), HTTPStatus.OK
 
 
 @event_bp.post("/events/<int:event_id>/registrations/me")
@@ -245,15 +255,15 @@ def register_for_event(event_id: int):
             event_id, g.current_user.id
         )
     except EventUnavailableError as error:
-        return error_response("event_unavailable", str(error), 409)
+        return error_response("event_unavailable", str(error), HTTPStatus.CONFLICT)
     except EventCapacityExceededError as error:
-        return error_response("capacity_exceeded", str(error), 409)
+        return error_response("capacity_exceeded", str(error), HTTPStatus.CONFLICT)
     except DuplicateRegistrationError as error:
-        return error_response("duplicate_registration", str(error), 409)
+        return error_response("duplicate_registration", str(error), HTTPStatus.CONFLICT)
     except NotFoundError as error:
-        return error_response("not_found", str(error), 404)
+        return error_response("not_found", str(error), HTTPStatus.NOT_FOUND)
     except ValidationError as error:
-        return error_response("validation_error", str(error), 400)
+        return error_response("validation_error", str(error), HTTPStatus.BAD_REQUEST)
 
     return jsonify(
         {
@@ -264,7 +274,7 @@ def register_for_event(event_id: int):
                 "status": registration.status,
             }
         }
-    ), 201
+    ), HTTPStatus.CREATED
 
 
 @event_bp.delete("/events/<int:event_id>/registrations/me")
@@ -274,10 +284,10 @@ def cancel_event_registration(event_id: int):
     try:
         get_event_registration_service().cancel(event_id, g.current_user.id)
     except NotFoundError as error:
-        return error_response("not_found", str(error), 404)
+        return error_response("not_found", str(error), HTTPStatus.NOT_FOUND)
     except ValidationError as error:
-        return error_response("validation_error", str(error), 400)
-    return "", 204
+        return error_response("validation_error", str(error), HTTPStatus.BAD_REQUEST)
+    return "", HTTPStatus.NO_CONTENT
 
 
 def _editable_values(request_data: dict[str, object]) -> dict[str, object]:

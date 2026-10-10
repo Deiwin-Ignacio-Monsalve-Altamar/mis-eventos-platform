@@ -1,6 +1,7 @@
 """Provide decorators that require a valid authenticated user."""
 
 from functools import wraps
+from http import HTTPStatus
 
 from flask import current_app, g, request
 
@@ -18,17 +19,23 @@ def token_required(view_function):
         token = request.cookies.get(ACCESS_TOKEN_COOKIE_NAME)
         if not token:
             return error_response(
-                "authentication_required", "Authentication is required.", 401
+                "authentication_required",
+                "Authentication is required.",
+                HTTPStatus.UNAUTHORIZED,
             )
 
         try:
             g.current_user = get_auth_service().get_authenticated_user(token)
         except AuthenticationError:
-            return error_response("invalid_token", "Authentication is required.", 401)
+            return error_response(
+                "invalid_token", "Authentication is required.", HTTPStatus.UNAUTHORIZED
+            )
         except TokenConfigurationError:
             current_app.logger.error("JWT signing key is not configured.")
             return error_response(
-                "authentication_unavailable", "Authentication is unavailable.", 503
+                "authentication_unavailable",
+                "Authentication is unavailable.",
+                HTTPStatus.SERVICE_UNAVAILABLE,
             )
 
         return view_function(*args, **kwargs)

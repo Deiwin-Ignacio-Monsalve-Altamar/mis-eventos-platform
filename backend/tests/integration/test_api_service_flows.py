@@ -3,6 +3,7 @@
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from datetime import UTC, datetime
+from http import HTTPStatus
 from threading import Barrier, Lock
 from unittest.mock import Mock
 
@@ -134,9 +135,9 @@ def test_registration_login_and_protected_event_creation_flow(application_client
         },
     )
 
-    assert registration_response.status_code == 201
-    assert login_response.status_code == 200
-    assert event_response.status_code == 201
+    assert registration_response.status_code == HTTPStatus.CREATED
+    assert login_response.status_code == HTTPStatus.OK
+    assert event_response.status_code == HTTPStatus.CREATED
     assert event_repository.save.call_args.args[0].created_by_id == 7
     user_repository.add.assert_called_once()
 
@@ -147,7 +148,7 @@ def test_search_flow_normalizes_query_before_mocked_persistence(application_clie
 
     response = client.get("/api/v1/events?page=1&page_size=10&q=%20engineering%20")
 
-    assert response.status_code == 200
+    assert response.status_code == HTTPStatus.OK
     assert response.json["events"][0]["id"] == EVENT.id
     event_repository.list_events.assert_called_once_with(1, 10, "engineering")
 
@@ -155,7 +156,7 @@ def test_search_flow_normalizes_query_before_mocked_persistence(application_clie
 def test_related_record_delete_conflict_flows_through_route_and_service(
     application_client,
 ):
-    """Map an infrastructure conflict through the service to a 409 API response."""
+    """Map an infrastructure conflict through the service to an API conflict response."""
     client, _, event_repository = application_client
     event_repository.delete.side_effect = RelatedRecordsError(
         "Events with registrations cannot be deleted."
@@ -164,8 +165,8 @@ def test_related_record_delete_conflict_flows_through_route_and_service(
 
     response = client.delete(f"/api/v1/events/{EVENT.id}")
 
-    assert login_response.status_code == 200
-    assert response.status_code == 409
+    assert login_response.status_code == HTTPStatus.OK
+    assert response.status_code == HTTPStatus.CONFLICT
     assert response.json["error"]["code"] == "related_records"
     event_repository.delete.assert_called_once_with(EVENT.id, 7)
 
@@ -224,9 +225,16 @@ def test_concurrent_session_enrollments_return_one_success_and_one_capacity_conf
         ready_barrier.wait(timeout=5)
         results = [future.result(timeout=5) for future in futures]
 
-    assert sorted(status for status, _ in results) == [201, 409]
-    rejected = next(payload for status, payload in results if status == 409)
-    accepted = next(payload for status, payload in results if status == 201)
+    assert sorted(status for status, _ in results) == [
+        HTTPStatus.CREATED,
+        HTTPStatus.CONFLICT,
+    ]
+    rejected = next(
+        payload for status, payload in results if status == HTTPStatus.CONFLICT
+    )
+    accepted = next(
+        payload for status, payload in results if status == HTTPStatus.CREATED
+    )
     assert rejected["error"]["code"] == "capacity_exceeded"
     assert accepted["message"] == "Session registration is active."
     assert occupancy["active"] == capacity
@@ -267,9 +275,9 @@ def test_registration_api_creates_and_lists_only_current_users_records(monkeypat
     created = client.post("/api/v1/events/12/registrations/me")
     listed = client.get("/api/v1/registrations/me")
 
-    assert created.status_code == 201
+    assert created.status_code == HTTPStatus.CREATED
     assert created.json["registration"]["user_id"] == 22
-    assert listed.status_code == 200
+    assert listed.status_code == HTTPStatus.OK
     assert [item["status"] for item in listed.json["registrations"]] == [
         "registered",
         "cancelled",
@@ -330,8 +338,13 @@ def test_concurrent_event_registrations_return_one_success_and_one_capacity_conf
         ready_barrier.wait(timeout=5)
         results = [future.result(timeout=5) for future in futures]
 
-    assert sorted(status for status, _ in results) == [201, 409]
-    conflict = next(payload for status, payload in results if status == 409)
+    assert sorted(status for status, _ in results) == [
+        HTTPStatus.CREATED,
+        HTTPStatus.CONFLICT,
+    ]
+    conflict = next(
+        payload for status, payload in results if status == HTTPStatus.CONFLICT
+    )
     assert conflict["error"]["code"] == "capacity_exceeded"
     assert occupied["count"] == capacity
     assert repository.register.call_count == 2

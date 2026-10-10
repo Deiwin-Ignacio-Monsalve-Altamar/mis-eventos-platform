@@ -1,6 +1,7 @@
 """Verify session routes using mocked application and authentication services."""
 
 from datetime import UTC, datetime
+from http import HTTPStatus
 from unittest.mock import Mock
 
 import pytest
@@ -94,7 +95,13 @@ def test_session_crud_routes(session_client):
         fetched.status_code,
         updated.status_code,
         deleted.status_code,
-    ) == (201, 200, 200, 200, 204)
+    ) == (
+        HTTPStatus.CREATED,
+        HTTPStatus.OK,
+        HTTPStatus.OK,
+        HTTPStatus.OK,
+        HTTPStatus.NO_CONTENT,
+    )
     assert fetched.json["session"]["speaker_ids"] == [4]
     assert fetched.json["session"]["version"] == RECORD.version
     assert deleted.data == b""
@@ -118,7 +125,7 @@ def test_all_session_writes_require_authentication(session_client, method):
         if method != "delete"
         else client.delete(path)
     )
-    assert response.status_code == 401
+    assert response.status_code == HTTPStatus.UNAUTHORIZED
     assert response.json["error"]["code"] == "authentication_required"
     service.create.assert_not_called()
     service.update.assert_not_called()
@@ -134,12 +141,12 @@ def test_session_routes_map_validation_and_not_found_errors(session_client):
     service.get.side_effect = NotFoundError("Session not found for this event.")
     response = client.post("/api/v1/events/1/sessions", json={"capacity": 0})
     missing = client.get("/api/v1/events/1/sessions/99")
-    assert response.status_code == 400
+    assert response.status_code == HTTPStatus.BAD_REQUEST
     assert response.json["error"] == {
         "code": "validation_error",
         "message": "Capacity must be positive.",
     }
-    assert missing.status_code == 404
+    assert missing.status_code == HTTPStatus.NOT_FOUND
     assert missing.json["error"]["code"] == "not_found"
 
 
@@ -153,7 +160,7 @@ def test_create_rejects_unknown_fields_without_calling_service(session_client):
         json={"title": "Talk", "unexpected": "value"},
     )
 
-    assert response.status_code == 400
+    assert response.status_code == HTTPStatus.BAD_REQUEST
     assert response.json["error"] == {
         "code": "invalid_request",
         "message": "Unknown field(s): unexpected.",
@@ -168,7 +175,7 @@ def test_update_rejects_unknown_fields_without_calling_service(session_client):
 
     response = client.patch("/api/v1/events/1/sessions/2", json={"unexpected": "value"})
 
-    assert response.status_code == 400
+    assert response.status_code == HTTPStatus.BAD_REQUEST
     assert response.json["error"] == {
         "code": "invalid_request",
         "message": "Unknown field(s): unexpected.",
@@ -183,7 +190,7 @@ def test_session_write_rejects_non_object_json_without_calling_service(session_c
 
     response = client.post("/api/v1/events/1/sessions", json=["Talk"])
 
-    assert response.status_code == 400
+    assert response.status_code == HTTPStatus.BAD_REQUEST
     assert response.json["error"] == {
         "code": "invalid_request",
         "message": "A JSON object is required.",
@@ -202,8 +209,8 @@ def test_attendee_can_enroll_and_cancel_only_the_authenticated_identity(session_
     )
     cancelled = client.delete("/api/v1/events/1/sessions/2/attendees/me")
 
-    assert enrolled.status_code == 201
-    assert cancelled.status_code == 204
+    assert enrolled.status_code == HTTPStatus.CREATED
+    assert cancelled.status_code == HTTPStatus.NO_CONTENT
     assert cancelled.data == b""
     attendee_service.enroll.assert_called_once_with(1, 2, ACCOUNT.id)
     attendee_service.cancel.assert_called_once_with(1, 2, ACCOUNT.id)
@@ -218,9 +225,9 @@ def test_capacity_and_attendee_roster_endpoints(session_client):
     capacity = client.get("/api/v1/events/1/sessions/2/capacity")
     roster = client.get("/api/v1/events/1/sessions/2/attendees")
 
-    assert capacity.status_code == 200
+    assert capacity.status_code == HTTPStatus.OK
     assert capacity.json == {"capacity": 20, "occupied": 3, "available": 17}
-    assert roster.status_code == 200
+    assert roster.status_code == HTTPStatus.OK
     assert roster.json["attendees"][0]["user_id"] == 21
     attendee_service.list_attendees.assert_called_once_with(1, 2, ACCOUNT.id)
 
@@ -235,7 +242,7 @@ def test_update_rejects_non_positive_or_non_integer_versions(session_client, ver
         "/api/v1/events/1/sessions/2", json={"title": "Talk", "version": version}
     )
 
-    assert response.status_code == 400
+    assert response.status_code == HTTPStatus.BAD_REQUEST
     assert response.json["error"]["code"] == "invalid_request"
     service.update.assert_not_called()
 
@@ -274,17 +281,17 @@ def test_session_routes_map_remaining_application_errors(session_client):
     ]
 
     assert [response.status_code for response in responses] == [
-        404,
-        404,
-        409,
-        404,
-        403,
-        404,
-        409,
-        409,
-        400,
-        404,
-        404,
+        HTTPStatus.NOT_FOUND,
+        HTTPStatus.NOT_FOUND,
+        HTTPStatus.CONFLICT,
+        HTTPStatus.NOT_FOUND,
+        HTTPStatus.FORBIDDEN,
+        HTTPStatus.NOT_FOUND,
+        HTTPStatus.CONFLICT,
+        HTTPStatus.CONFLICT,
+        HTTPStatus.BAD_REQUEST,
+        HTTPStatus.NOT_FOUND,
+        HTTPStatus.NOT_FOUND,
     ]
     assert responses[2].json["error"]["code"] == "concurrency_conflict"
 
@@ -314,7 +321,11 @@ def test_session_mutations_return_forbidden_for_non_owners(session_client):
         client.delete("/api/v1/events/1/sessions/2"),
     ]
 
-    assert [response.status_code for response in responses] == [403, 403, 403]
+    assert [response.status_code for response in responses] == [
+        HTTPStatus.FORBIDDEN,
+        HTTPStatus.FORBIDDEN,
+        HTTPStatus.FORBIDDEN,
+    ]
     assert all(response.json["error"]["code"] == "forbidden" for response in responses)
 
 
@@ -333,9 +344,9 @@ def test_roster_rejects_non_owner_and_enrollment_maps_full_capacity(session_clie
     roster = client.get("/api/v1/events/1/sessions/2/attendees")
     full = client.post("/api/v1/events/1/sessions/2/attendees", json={})
 
-    assert roster.status_code == 403
+    assert roster.status_code == HTTPStatus.FORBIDDEN
     assert roster.json["error"]["code"] == "forbidden"
-    assert full.status_code == 409
+    assert full.status_code == HTTPStatus.CONFLICT
     assert full.json["error"]["code"] == "capacity_exceeded"
 
 
@@ -345,7 +356,7 @@ def test_session_enrollment_requires_authentication(session_client):
 
     response = client.post("/api/v1/events/1/sessions/2/attendees", json={})
 
-    assert response.status_code == 401
+    assert response.status_code == HTTPStatus.UNAUTHORIZED
     service.attendee_service.enroll.assert_not_called()
 
 
@@ -362,7 +373,7 @@ def test_update_session_returns_conflict_with_current_version(session_client):
         json={"title": "Revised", "version": 3},
     )
 
-    assert response.status_code == 409
+    assert response.status_code == HTTPStatus.CONFLICT
     assert response.json["error"] == {
         "code": "concurrency_conflict",
         "message": "The session changed since it was loaded.",
@@ -377,6 +388,6 @@ def test_update_session_requires_a_positive_version(session_client):
 
     response = client.patch("/api/v1/events/1/sessions/2", json={"title": "Revised"})
 
-    assert response.status_code == 400
+    assert response.status_code == HTTPStatus.BAD_REQUEST
     assert response.json["error"]["code"] == "invalid_request"
     service.update.assert_not_called()

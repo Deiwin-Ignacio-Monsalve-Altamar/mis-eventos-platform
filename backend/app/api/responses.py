@@ -1,5 +1,7 @@
 """Build consistent JSON error responses for API endpoints."""
 
+from http import HTTPStatus
+
 from flask import jsonify
 
 
@@ -20,5 +22,5 @@ def concurrency_conflict_response(message: str, current_version: int | None):
                 }
             }
         ),
-        409,
+        HTTPStatus.CONFLICT,
     )
