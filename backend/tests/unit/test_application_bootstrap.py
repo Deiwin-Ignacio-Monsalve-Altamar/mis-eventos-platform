@@ -36,6 +36,20 @@ def test_application_factory_registers_routes_and_api_documentation():
     assert "/api/v1/events/<int:event_id>/sessions" in registered_rules
 
 
+def test_flask_http_errors_use_json_and_preserve_protocol_headers():
+    """Serialize framework 404 and 405 errors without losing the Allow header."""
+    client = create_app().test_client()
+
+    missing = client.get("/not-a-route")
+    wrong_method = client.post("/api/v1/health")
+
+    assert missing.status_code == 404
+    assert missing.json["error"]["code"] == "not_found"
+    assert wrong_method.status_code == 405
+    assert wrong_method.json["error"]["code"] == "method_not_allowed"
+    assert "GET" in wrong_method.headers["Allow"]
+
+
 def test_dependency_factories_build_services_in_flask_context():
     """Construct request-scoped application services over the configured session."""
     app = Flask(__name__)
