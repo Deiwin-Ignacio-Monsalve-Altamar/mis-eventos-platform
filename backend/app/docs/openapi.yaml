@@ -1046,6 +1046,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "403":
+          description: Caller is not the event creator.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "404":
           description: Event or speaker not found.
           content:
@@ -1154,6 +1160,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "403":
+          description: Caller is not the event creator.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "404":
           description: Session or event not found.
           content:
@@ -1183,6 +1195,12 @@ paths:
           description: Session deleted.
         "401":
           description: Authentication required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Caller is not the event creator.
           content:
             application/json:
               schema:

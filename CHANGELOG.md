@@ -67,7 +67,6 @@ All notable changes to Mis Eventos are documented in this file.
 
 * Added SHA-256 password hashing as required by the technical challenge.
 * Added constant-time password hash comparison.
-* Documented the security limitations of SHA-256 password hashing.
 
 #### Fixed
 

@@ -1,210 +1,69 @@
-# AGENTS.md — Mis Eventos
+# Mis Eventos — Development Guide
 
-## 1. Role and objective
+## Project structure and technology
 
-Act as a Senior Software Engineer and technical mentor working on the Mis Eventos Full Stack technical assessment.
+Mis Eventos is an event management application. The repository is organized into:
 
-Build a reliable, secure, maintainable event management application within the assessment deadline. Follow the official requirements and the existing Jira tickets. Prioritize working end-to-end functionality over unnecessary abstractions or optional features.
+- `backend/`: Flask API, application and domain logic, SQLAlchemy persistence, Alembic migrations, observability, and backend tests.
+- `frontend/`: React application built with Vite, API clients, UI components, and frontend and Playwright tests.
+- `scripts/`: local development and validation helpers.
+- `docker-compose.yml`: local backend, frontend, and PostgreSQL services.
 
-Before changing anything, inspect the repository, the current Git state, existing documentation, and the relevant Jira ticket or task description when available.
+The backend uses Python 3.12, Flask, SQLAlchemy, PostgreSQL, Poetry, Alembic, and pytest. The frontend uses Node.js, npm, React, React Router, and Vite. See [backend/README.md](backend/README.md) and [frontend/README.md](frontend/README.md) for component-specific setup and behavior.
 
-## 2. Source of truth
+## Working in the repository
 
-Follow this order of precedence:
+- Read the task requirements and inspect the relevant implementation, tests, and current Git status before editing.
+- Follow the existing architecture and conventions. Keep changes within the task's scope; avoid adding layers, dependencies, or abstractions without a concrete need.
+- Preserve existing local and in-progress changes. Do not overwrite or revert work unrelated to the task.
+- Keep source code, identifiers, comments, and technical documentation in English. User-facing text may follow the language required by the product. Communicate with the project maintainer in Spanish.
+- Use descriptive names, focused functions, and type annotations where they improve clarity. Add comments or docstrings when they explain a non-obvious decision, constraint, or public interface; avoid repeating what the code already says.
+- Match the formatter and linter configuration in each component rather than introducing new style rules.
 
-1. Official technical assessment requirements.
-2. Explicit acceptance criteria from the current Jira ticket.
-3. Existing architectural decisions documented in the repository.
-4. These instructions.
-5. Optional improvements proposed by the developer.
+## Architecture and implementation
 
-Do not invent mandatory requirements. Clearly identify assumptions and ask before making a decision that significantly changes architecture or scope.
+Keep Flask routes focused on HTTP handling, input validation, and response serialization. Put application orchestration and business rules in the existing application and domain modules, and database access in the infrastructure layer. Wire application dependencies through the existing factory or dependency mechanism; do not create business services or repositories as module-level instances. Framework extension objects may follow the framework's initialization pattern.
 
-## 3. Language policy
+In the frontend, use the existing React components, router, state management, and API clients. Keep presentation, API communication, and application state responsibilities clear. Provide appropriate loading, error, empty, and success states for user flows.
 
-All source code and technical artifacts must be written in English, including:
+Use SQLAlchemy's parameterized query mechanisms; never interpolate untrusted input into SQL. Validate input at API boundaries and enforce authorization in the backend, even when the frontend hides restricted actions. Preserve existing API contracts and business rules unless the task requires a verified change.
 
-* File and directory names.
-* Variables, functions, classes, methods, constants, and types.
-* Comments and file header documentation.
-* Docstrings and API descriptions.
-* Error messages returned by the API.
-* Test names, fixtures, and test descriptions.
-* Database table and column names.
-* Commit messages and technical documentation.
-* Frontend labels and user-facing messages, unless the assessment explicitly requires another language.
+## Security and configuration
 
-Use clear, professional, consistent English.
+- Never commit real credentials, tokens, personal data, or local `.env` files. Use the checked-in environment templates as examples and keep secrets outside source code.
+- Treat `VITE_*` values as public because they are included in the browser bundle.
+- Never store plaintext passwords. Follow the password hashing approach required by the assessment and keep its implementation isolated so it can be replaced if requirements change.
+- Validate authentication tokens and enforce event, session, and registration permissions and capacity rules on the backend.
+- Do not expose secrets, tokens, passwords, or internal traces in API responses or logs.
+- Manage schema changes with Alembic. Review generated migrations, do not rewrite migrations already applied to shared environments, and avoid destructive database operations or volume removal unless explicitly required and approved.
+- In Docker, use service names for container-to-container connections and `localhost` for connections from the host where appropriate. Keep environment-specific settings outside source code.
 
-## 4. File header comments and function documentation
+## Tests and validation
 
-Every source code file must begin with an appropriate English-language header comment or module docstring explaining its purpose and responsibility.
+Add or update tests for changed behavior, including relevant business rules and API or UI contracts. Use isolated test data and mock external services unless a test specifically requires them. Do not remove or weaken tests to make a suite pass.
 
-Use the correct syntax for each language. For Python, use a module-level docstring. For JavaScript and TypeScript, use a file-level documentation comment. For configuration files, use comments only where the format supports them.
+Run focused checks first, then the relevant broader suites and build or lint checks when feasible. Report the commands actually run and their results; identify checks that could not run and why.
 
-Every function, method, class constructor with meaningful behavior, and test function must have an English docstring or documentation comment describing its purpose. For Python, use standard docstrings. For JavaScript and TypeScript, use JSDoc where appropriate.
+The root `Makefile` provides these common commands:
 
-Documentation must explain purpose, relevant arguments, return values, and exceptions when applicable. Avoid redundant comments that merely repeat the code.
+| Command | Purpose |
+| --- | --- |
+| `make help` | List available development commands. |
+| `make check` | Check required local tools and Compose configuration. |
+| `make setup` | Prepare missing environment files from templates and install locked dependencies. |
+| `make run` | Build and start Compose services, apply migrations, and check availability. |
+| `make status` / `make logs` | Inspect service state or view recent logs. |
+| `make migrate` | Apply Alembic migrations after PostgreSQL is ready. |
+| `make test-backend` / `make test-frontend` | Run the backend or frontend test suite. |
+| `make test-e2e` | Run frontend Playwright tests. |
+| `make test` / `make coverage` | Run both test suites and generate reports. |
+| `make lint` | Run backend Ruff checks and frontend lint. |
+| `make stop` | Stop and remove Compose containers while preserving named volumes. |
 
-Do not modify generated files, lockfiles, binary files, or third-party files just to add headers. Follow each file format's conventions.
+See the component READMEs for local, component-specific commands and configuration. Check `make help` if the Makefile changes.
 
-## 5. Clean Code principles
+## Git and task completion
 
-Follow these principles:
+Work on the current task branch. Do not discard local changes or use destructive Git operations. Do not commit, push, merge, or rebase unless requested.
 
-* Single Responsibility Principle.
-* Separation of concerns.
-* High cohesion and low coupling.
-* Meaningful, descriptive names.
-* Small, focused functions.
-* Explicit dependencies.
-* Avoid duplicated logic.
-* Avoid magic numbers and unexplained string literals.
-* Prefer early returns over deeply nested conditionals.
-* Use type hints in Python where they improve clarity.
-* Handle errors explicitly and consistently.
-* Keep code easy to test.
-* Avoid unnecessary abstractions, generic frameworks, and premature optimization.
-
-Do not add a design pattern unless it solves a real problem in the current scope.
-
-## 6. Dependency injection and object lifecycle
-
-Do not instantiate application services, repositories, use cases, or other business dependencies as module-level objects.
-
-Create and wire these dependencies through an application factory, a dependency container, or the existing dependency-injection mechanism. Inject dependencies through constructors or explicit factory functions instead of hiding them in global state.
-
-Keep configuration separate from object creation. Read configuration from environment variables through the established configuration layer.
-
-Framework extension declarations such as a module-level SQLAlchemy extension object may remain when required by the framework's initialization pattern. Distinguish extension declarations from application service or repository instances.
-
-Avoid mutable global state. Do not instantiate dependencies in file headers or during module imports.
-
-## 7. Backend architecture
-
-Respect the existing project architecture. Keep HTTP routes/controllers thin and separate:
-
-* API layer: HTTP request/response handling and validation.
-* Application layer: use cases and orchestration.
-* Domain layer: business rules and entities.
-* Infrastructure layer: database access and external integrations.
-* Dependency wiring: construction and injection of dependencies.
-* Configuration: environment-based settings.
-* Telemetry: instrumentation namespace and related instrumentation.
-
-Do not introduce additional layers or move existing modules without a clear reason.
-
-Use Flask, Python 3.12, SQLAlchemy, PostgreSQL, Poetry, Alembic, pytest, and the existing API documentation approach.
-
-Use SQLAlchemy parameterized queries. Never concatenate untrusted user input directly into SQL with f-strings, even if a performance optimization is requested in the assessment notes.
-
-## 8. Security and business rules
-
-* Validate input at API boundaries and enforce business rules in the appropriate application/domain layer.
-* Protect event-management operations on the backend.
-* Never store plaintext passwords.
-* Use a password hashing approach appropriate for password storage. If the assessment's SHA-256 instruction must be followed literally, identify the security limitation and isolate the implementation so it can be replaced safely.
-* Validate authentication tokens and handle expiration and invalid tokens.
-* Prevent duplicate event registrations.
-* Prevent event and session capacity from being exceeded, including under concurrent requests.
-* Validate event states, date ranges, session schedules, and relationships.
-* Never expose secrets, passwords, or sensitive tokens in responses or logs.
-* Return consistent HTTP status codes and error responses.
-
-## 9. Frontend quality
-
-Inspect the current framework and project structure before implementing frontend functionality.
-
-Use the existing framework and its router, state manager, and HTTP client. Do not replace the stack without explicit approval.
-
-Create reusable components when they have clear shared responsibilities. Keep presentation separate from API calls and business state.
-
-Provide loading states, error feedback, empty states, success confirmations, form validation, and responsive layouts.
-
-Enforce authorization in the backend even when the frontend hides protected controls.
-
-## 10. Testing and verification
-
-Write tests for business rules and critical user flows.
-
-At minimum, cover authentication, protected operations, event CRUD, search, pagination, session schedule validation, capacity limits, duplicate registrations, and user registrations.
-
-For every ticket:
-
-1. Identify existing tests and add relevant new tests.
-2. Run the most focused tests first.
-3. Run the broader test suite when feasible.
-4. Run linting, formatting, type checks, migrations, or frontend build checks when configured and relevant.
-5. Report the actual commands and their actual results.
-6. Never claim a test passed if it was not executed successfully.
-
-Use isolated test data and avoid relying on external services unless the test explicitly requires them.
-
-## 11. Database and migrations
-
-Use PostgreSQL and SQLAlchemy. Manage schema changes through Alembic migrations.
-
-Do not create tables manually as a substitute for migrations. Do not modify an already-applied migration to change production schema history; create a new migration instead.
-
-Review autogenerated migrations before applying them. Verify migration upgrade behavior and metadata consistency.
-
-Use environment variables for connection settings. Do not commit real credentials.
-
-## 12. Docker and environment
-
-Keep backend, frontend, and database configuration reproducible with Docker and Docker Compose.
-
-Use service names for connections between containers and localhost for connections from the host when appropriate.
-
-Do not introduce hardcoded machine-specific paths. Keep environment-specific configuration outside source code.
-
-Do not change base images, multi-stage builds, or infrastructure architecture without a demonstrated need.
-
-## 13. Workflow for every ticket
-
-Before implementation:
-
-1. Inspect `git status` and preserve existing user changes.
-2. Read the ticket and acceptance criteria.
-3. Inspect the relevant code and tests.
-4. Explain the intended minimal change and likely files affected.
-
-Then:
-
-5. Implement only the ticket's scope.
-6. Add or update documentation and tests.
-7. Execute verification commands.
-8. Review the final diff for accidental changes, security issues, and unnecessary complexity.
-9. Summarize changed files, behavior, test results, and remaining risks.
-
-Do not silently overwrite user work, reset branches, delete files, or make unrelated refactors.
-
-Do not mark a ticket complete based only on files being present. Verify the behavior.
-
-## 14. Prioritization
-
-Mandatory requirements come first:
-
-1. Database and migration infrastructure.
-2. Authentication and authorization.
-3. Event CRUD, search, pagination, and capacity.
-4. Sessions and speakers.
-5. Registrations and user profile.
-6. Frontend integration and complete user journeys.
-7. Tests, coverage report, Swagger/OpenAPI, Docker, and READMEs.
-8. Optional roles and other bonuses only after the required flows work.
-
-Do not add microservices, Redis, AI recommendations, or other optional infrastructure unless all required features are working and there is sufficient time.
-
-## 15. Required response format after each task
-
-Report:
-
-* **Scope:** what the task required.
-* **Changes:** files changed and why.
-* **Implementation:** key design decisions.
-* **Verification:** commands executed and actual results.
-* **Risks or pending work:** anything not verified or not implemented.
-* **Next step:** the smallest logical next task.
-
-Keep explanations concise, precise, and in Spanish when communicating with the developer. All repository artifacts must remain in English.
+Before finishing, review the diff for scope, secrets, and unintended changes, and run `git diff --check`. Summarize the files changed, implementation decisions, verification results, and remaining limitations in Spanish.

@@ -3,10 +3,10 @@ SHELL := /bin/sh
 
 PYTHON ?= python3
 
-.PHONY: help check setup run up status logs migrate test-backend test-frontend test coverage lint stop down restart
+.PHONY: help check setup run up status logs migrate test-backend test-frontend test-e2e test coverage lint stop down restart
 
 help: ## Show available development commands.
-	@awk 'BEGIN {FS = ":.*##"; print "Mis Eventos local development commands:"} /^[a-zA-Z_-]+:.*##/ {printf "  %-18s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
+	@awk 'BEGIN {FS = ":.*##"; print "Mis Eventos local development commands:"} /^[a-zA-Z0-9_-]+:.*##/ {printf "  %-18s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
 check: ## Check required local tools and Docker Compose configuration.
 	@command -v $(PYTHON) >/dev/null 2>&1 || { echo "ERROR: Python 3.12+ is required; install it and rerun make check."; exit 1; }
@@ -34,6 +34,9 @@ test-backend: ## Run backend pytest with line and branch coverage reports.
 
 test-frontend: ## Run frontend Node tests with native coverage reporting.
 	@$(PYTHON) scripts/dev.py test-frontend
+
+test-e2e: ## Run frontend Playwright browser tests.
+	@cd frontend && npm run test:e2e
 
 test: ## Run both test suites and create a combined HTML report.
 	@$(PYTHON) scripts/dev.py test
