@@ -24,6 +24,18 @@ def load_config() -> dict[str, object]:
         raise ValueError("JWT_ACCESS_TOKEN_TTL_SECONDS must be positive.")
 
     database_url = get_database_url()
+    environment = os.getenv("APP_ENVIRONMENT", "local").strip().lower()
+    secure_cookie_value = os.getenv("JWT_COOKIE_SECURE")
+    if secure_cookie_value is None:
+        secure_cookie = environment == "production"
+    else:
+        normalized_secure_cookie = secure_cookie_value.strip().lower()
+        if normalized_secure_cookie not in {"true", "false"}:
+            raise ValueError("JWT_COOKIE_SECURE must be either 'true' or 'false'.")
+        secure_cookie = normalized_secure_cookie == "true"
+
+    if environment == "production" and not secure_cookie:
+        raise ValueError("JWT_COOKIE_SECURE must be true in production.")
 
     return {
         "DATABASE_URL": database_url,
@@ -31,9 +43,9 @@ def load_config() -> dict[str, object]:
         "SQLALCHEMY_TRACK_MODIFICATIONS": False,
         "JWT_SECRET_KEY": os.getenv("JWT_SECRET_KEY"),
         "JWT_ACCESS_TOKEN_TTL_SECONDS": token_ttl,
-        "JWT_COOKIE_SECURE": os.getenv("JWT_COOKIE_SECURE", "false").lower() == "true",
+        "JWT_COOKIE_SECURE": secure_cookie,
         "SERVICE_NAME": os.getenv("SERVICE_NAME", "mis-eventos-backend"),
-        "APP_ENVIRONMENT": os.getenv("APP_ENVIRONMENT", "local"),
+        "APP_ENVIRONMENT": environment,
         "APP_VERSION": os.getenv("APP_VERSION", "dev"),
         "LOG_LEVEL": os.getenv("LOG_LEVEL", "INFO"),
     }

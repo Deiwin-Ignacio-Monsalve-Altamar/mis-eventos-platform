@@ -228,6 +228,78 @@ def test_runtime_configuration_rejects_empty_required_values(
         load_config()
 
 
+def test_local_cookie_security_defaults_to_http_compatible_and_normalizes_environment(
+    monkeypatch,
+):
+    """Default local cookies to HTTP-compatible behavior and normalize the name."""
+    monkeypatch.setenv("APP_ENVIRONMENT", " Local ")
+    monkeypatch.delenv("JWT_COOKIE_SECURE", raising=False)
+
+    config = load_config()
+
+    assert config["APP_ENVIRONMENT"] == "local"
+    assert config["JWT_COOKIE_SECURE"] is False
+
+
+@pytest.mark.parametrize(
+    ("cookie_setting", "expected"),
+    [("true", True), (" TRUE ", True), ("false", False), (" False ", False)],
+)
+def test_local_cookie_security_accepts_explicit_boolean_values(
+    monkeypatch, cookie_setting, expected
+):
+    """Accept case-insensitive boolean text with surrounding whitespace locally."""
+    monkeypatch.setenv("APP_ENVIRONMENT", "local")
+    monkeypatch.setenv("JWT_COOKIE_SECURE", cookie_setting)
+
+    assert load_config()["JWT_COOKIE_SECURE"] is expected
+
+
+def test_production_cookie_security_defaults_to_secure_and_normalizes_environment(
+    monkeypatch,
+):
+    """Require Secure cookies by default for a normalized production environment."""
+    monkeypatch.setenv("APP_ENVIRONMENT", " Production ")
+    monkeypatch.delenv("JWT_COOKIE_SECURE", raising=False)
+
+    config = load_config()
+
+    assert config["APP_ENVIRONMENT"] == "production"
+    assert config["JWT_COOKIE_SECURE"] is True
+
+
+@pytest.mark.parametrize("cookie_setting", ["true", " TRUE "])
+def test_production_accepts_explicit_secure_cookie_setting(monkeypatch, cookie_setting):
+    """Allow production to start when Secure cookies are explicitly enabled."""
+    monkeypatch.setenv("APP_ENVIRONMENT", "production")
+    monkeypatch.setenv("JWT_COOKIE_SECURE", cookie_setting)
+
+    assert load_config()["JWT_COOKIE_SECURE"] is True
+
+
+def test_production_rejects_explicitly_insecure_cookie_setting(monkeypatch):
+    """Prevent the Flask application from starting with insecure prod cookies."""
+    monkeypatch.setenv("APP_ENVIRONMENT", "production")
+    monkeypatch.setenv("JWT_COOKIE_SECURE", "false")
+
+    with pytest.raises(
+        ValueError, match="JWT_COOKIE_SECURE must be true in production"
+    ):
+        create_app()
+
+
+@pytest.mark.parametrize("cookie_setting", ["", "yes", "1", "enabled"])
+def test_cookie_security_rejects_invalid_values(monkeypatch, cookie_setting):
+    """Reject cookie security settings outside the supported boolean text values."""
+    monkeypatch.setenv("APP_ENVIRONMENT", "local")
+    monkeypatch.setenv("JWT_COOKIE_SECURE", cookie_setting)
+
+    with pytest.raises(
+        ValueError, match="JWT_COOKIE_SECURE must be either 'true' or 'false'"
+    ):
+        load_config()
+
+
 def test_server_lifecycle_logs_graceful_shutdown_without_starting_a_socket(
     monkeypatch,
 ):

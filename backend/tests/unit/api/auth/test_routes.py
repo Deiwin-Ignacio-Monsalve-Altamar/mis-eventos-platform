@@ -28,10 +28,21 @@ ACCOUNT = UserAccount(
 @pytest.fixture
 def auth_client(monkeypatch):
     """Provide auth routes with a mocked service and no database extension."""
+    return _make_auth_client(monkeypatch, secure_cookie=False)
+
+
+@pytest.fixture
+def secure_auth_client(monkeypatch):
+    """Provide auth routes configured to mark cookies as Secure."""
+    return _make_auth_client(monkeypatch, secure_cookie=True)
+
+
+def _make_auth_client(monkeypatch, secure_cookie):
+    """Build the authentication test client with the requested cookie policy."""
     app = Flask(__name__)
     app.config.update(
         JWT_ACCESS_TOKEN_TTL_SECONDS=3600,
-        JWT_COOKIE_SECURE=False,
+        JWT_COOKIE_SECURE=secure_cookie,
     )
     service = Mock()
     service.register.return_value = ACCOUNT
@@ -120,6 +131,7 @@ def test_login_returns_profile_and_http_only_cookie(auth_client):
     assert response.json["user"]["email"] == "attendee@example.test"
     assert "password_hash" not in response.json["user"]
     assert "HttpOnly" in response.headers["Set-Cookie"]
+    assert "Secure" not in response.headers["Set-Cookie"]
     service.authenticate.assert_called_once_with(
         email="attendee@example.test", password="correct-password"
     )
@@ -168,3 +180,17 @@ def test_logout_expires_only_the_auth_cookie_without_auth_service_mutation(auth_
     assert "HttpOnly" in set_cookie
     assert "SameSite=Lax" in set_cookie
     service.get_authenticated_user.assert_not_called()
+
+
+def test_login_and_logout_mark_auth_cookie_secure_when_enabled(secure_auth_client):
+    """Set Secure on authentication cookies when the validated setting enables it."""
+    client, _ = secure_auth_client
+
+    login_response = client.post(
+        "/api/v1/auth/login",
+        json={"email": "attendee@example.test", "password": "correct-password"},
+    )
+    logout_response = client.post("/api/v1/auth/logout")
+
+    assert "Secure" in login_response.headers["Set-Cookie"]
+    assert "Secure" in logout_response.headers["Set-Cookie"]
