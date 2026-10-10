@@ -40,7 +40,7 @@ function ApplicationRoutes() {
         <Routes>
           <Route element={<EventListPage />} path="/" />
           <Route element={<EventListPage />} path="/events" />
-          <Route element={<RequireAuthentication><CreateEventPage /></RequireAuthentication>} path="/events/new" />
+          <Route element={<CreateEventPage />} path="/events/new" />
           <Route element={<EventDetailsPage />} path="/events/:eventId" />
           <Route element={<LoginPage />} path="/login" />
           <Route element={<RegisterPage />} path="/register" />

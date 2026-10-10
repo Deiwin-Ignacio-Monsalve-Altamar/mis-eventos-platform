@@ -61,7 +61,8 @@ test('application provider renders every required route without a blank screen',
         }),
       ),
     )
-    assert.ok(authenticatedHeader.includes('href="/profile"'), 'Authenticated users must have a profile link.')
+    assert.ok(authenticatedHeader.includes('aria-label="Abrir menú de usuario"'), 'Authenticated users must have a user avatar menu.')
+    assert.ok(!authenticatedHeader.includes('Mi perfil'), 'The header must not render a text-based profile button.')
     assert.ok(authenticatedHeader.includes('href="/my-events"'), 'Authenticated users must have a link to their events.')
     assert.ok(!authenticatedHeader.includes('Únete gratis'), 'Authenticated users must not see the registration CTA.')
   } finally {

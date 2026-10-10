@@ -27,7 +27,12 @@ const startingSession = {
 }
 
 /** Install API routes for a repeatable anonymous, attendee, or owner scenario. */
-async function mockApi(page, { authenticated = false, owner = false, failRegistration = false } = {}) {
+async function mockApi(page, {
+  authenticated = false,
+  owner = false,
+  failRegistration = false,
+  failLogout = false,
+} = {}) {
   let sessions = [{ ...startingSession }]
   let currentEvent = { ...event }
 
@@ -44,11 +49,22 @@ async function mockApi(page, { authenticated = false, owner = false, failRegistr
       body = authenticated
         ? { user: { id: 12, email: 'owner@example.test', first_name: 'Alex', last_name: 'Rivera' } }
         : { error: { code: 'unauthorized', message: 'Authentication required.' } }
-    } else if (path === '/events/4' && method === 'GET') {
+    } else if (path === '/auth/login' && method === 'POST') {
+      body = { user: { id: 12, email: 'owner@example.test', first_name: 'Alex', last_name: 'Rivera' } }
+    } else if (path === '/auth/logout' && method === 'POST') {
+      status = failLogout ? 500 : 200
+      body = failLogout
+        ? { error: { code: 'server_error', message: 'Logout could not be completed.' } }
+        : { message: 'Logged out.' }
+    } else if (path === '/events' && method === 'POST') {
+      currentEvent = { ...request.postDataJSON(), id: 11, version: 1 }
+      status = 201
       body = { event: currentEvent }
-    } else if (path === '/events/4/capacity' && method === 'GET') {
+    } else if ((path === '/events/4' || path === '/events/11') && method === 'GET') {
+      body = { event: currentEvent }
+    } else if ((path === '/events/4/capacity' || path === '/events/11/capacity') && method === 'GET') {
       body = { capacity: 20, occupied: 1, available: 19 }
-    } else if (path === '/events/4/sessions' && method === 'GET') {
+    } else if ((path === '/events/4/sessions' || path === '/events/11/sessions') && method === 'GET') {
       body = { sessions }
     } else if (path === '/events/mine/4' && method === 'GET') {
       status = owner ? 200 : 403
@@ -99,6 +115,110 @@ test('shows event details and directs anonymous attendees to sign in', async ({ 
   await expect(page.getByRole('button', { name: 'Inscribirme' })).toBeVisible()
   await page.getByRole('button', { name: 'Inscribirme' }).click()
   await expect(page).toHaveURL(/\/login$/)
+})
+
+test('guests see sign-in and account actions instead of the event form', async ({ page }) => {
+  await mockApi(page)
+  await page.goto('/events/new')
+
+  await expect(page.getByRole('heading', { name: 'Inicia sesión para crear un evento' })).toBeVisible()
+  const accessPanel = page.getByRole('region', { name: 'Inicia sesión para crear un evento' })
+  await expect(accessPanel.getByRole('link', { name: 'Iniciar sesión' })).toHaveAttribute('href', '/login')
+  await expect(accessPanel.getByRole('link', { name: 'Crear una cuenta' })).toHaveAttribute('href', '/register')
+  await expect(page.getByRole('button', { name: 'Crear evento' })).toHaveCount(0)
+
+  await accessPanel.getByRole('link', { name: 'Crear una cuenta' }).click()
+  await expect(page).toHaveURL(/\/register$/)
+})
+
+test('sign-in from event creation returns to the authenticated creation form', async ({ page }) => {
+  await mockApi(page)
+  await page.goto('/events/new')
+  await page.getByRole('region', { name: 'Inicia sesión para crear un evento' }).getByRole('link', { name: 'Iniciar sesión' }).click()
+  await page.getByLabel('Correo electrónico').fill('owner@example.test')
+  await page.getByLabel('Contraseña').fill('example-password')
+  await page.getByRole('button', { name: 'Iniciar sesión' }).click()
+
+  await expect(page).toHaveURL(/\/events\/new$/)
+  await expect(page.getByRole('button', { name: 'Crear evento' })).toBeVisible()
+})
+
+test('authenticated users can create an event', async ({ page }) => {
+  await mockApi(page, { authenticated: true })
+  await page.goto('/events/new')
+  await page.getByLabel('Nombre del evento').fill('My new event')
+  await page.getByLabel('Fecha y hora de inicio').fill('2030-06-10T14:00')
+  await page.getByLabel('Fecha y hora de finalización').fill('2030-06-10T16:00')
+  await page.getByLabel('Capacidad').fill('25')
+  await page.getByRole('button', { name: 'Crear evento' }).click()
+
+  await expect(page).toHaveURL(/\/events\/11$/)
+  await expect(page.getByRole('heading', { name: 'My new event' })).toBeVisible()
+})
+
+test('avatar menu opens, navigates to profile, and has no footer logout duplicate', async ({ page }) => {
+  await mockApi(page, { authenticated: true })
+  await page.goto('/events')
+  const avatar = page.getByRole('button', { name: 'Abrir menú de usuario' })
+  await avatar.click()
+
+  const menu = page.getByRole('navigation', { name: 'Menú de usuario' })
+  await expect(menu.getByRole('link', { name: 'Perfil' })).toBeVisible()
+  await menu.getByRole('link', { name: 'Perfil' }).click()
+  await expect(page).toHaveURL(/\/profile$/)
+  await expect(page.locator('.site-footer').getByRole('button', { name: 'Cerrar sesión' })).toHaveCount(0)
+})
+
+test('settings stay disabled, Escape closes the menu, and outside clicks dismiss it', async ({ page }) => {
+  await mockApi(page, { authenticated: true })
+  await page.goto('/events')
+  const avatar = page.getByRole('button', { name: 'Abrir menú de usuario' })
+  await avatar.click()
+  const menu = page.getByRole('navigation', { name: 'Menú de usuario' })
+  await expect(menu.getByRole('button', { name: /Ajustes.*Próximamente/ })).toBeDisabled()
+  await page.keyboard.press('Escape')
+  await expect(menu).toHaveCount(0)
+  await expect(avatar).toBeFocused()
+
+  await avatar.click()
+  await page.getByRole('banner').getByRole('link', { name: 'Mis Eventos, explorar eventos' }).click()
+  await expect(menu).toHaveCount(0)
+  await expect(page).toHaveURL(/\/events$/)
+})
+
+test('avatar logout clears the session, redirects to events, and fits a mobile viewport', async ({ page }) => {
+  await mockApi(page, { authenticated: true })
+  await page.setViewportSize({ width: 375, height: 812 })
+  await page.goto('/events')
+  await page.getByRole('button', { name: 'Abrir menú de usuario' }).click()
+  const menu = page.getByRole('navigation', { name: 'Menú de usuario' })
+  const logoutButton = menu.getByRole('button', { name: 'Cerrar sesión' })
+  await expect(logoutButton).toBeVisible()
+  const menuBounds = await menu.boundingBox()
+  expect(menuBounds.x).toBeGreaterThanOrEqual(0)
+  expect(menuBounds.x + menuBounds.width).toBeLessThanOrEqual(375)
+  const dimensions = await page.evaluate(() => ({
+    documentWidth: document.documentElement.scrollWidth,
+    viewportWidth: document.documentElement.clientWidth,
+  }))
+  expect(dimensions.documentWidth).toBeLessThanOrEqual(dimensions.viewportWidth)
+  await logoutButton.click()
+
+  await expect(page).toHaveURL(/\/events$/)
+  await expect(page.getByRole('banner').getByRole('link', { name: 'Iniciar sesión' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Cerrar sesión' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Abrir menú de usuario' })).toHaveCount(0)
+})
+
+test('failed logout keeps the user authenticated and shows an error', async ({ page }) => {
+  await mockApi(page, { authenticated: true, failLogout: true })
+  await page.goto('/events')
+  await page.getByRole('button', { name: 'Abrir menú de usuario' }).click()
+  await page.getByRole('navigation', { name: 'Menú de usuario' }).getByRole('button', { name: 'Cerrar sesión' }).click()
+
+  await expect(page.getByText('Logout could not be completed.')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Abrir menú de usuario' })).toBeVisible()
+  await expect(page.getByRole('navigation', { name: 'Menú de usuario' }).getByRole('button', { name: 'Cerrar sesión' })).toBeEnabled()
 })
 
 test('keeps registration available and explains an API rejection', async ({ page }) => {

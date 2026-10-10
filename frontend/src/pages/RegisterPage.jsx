@@ -1,7 +1,7 @@
 /** Register a new account through the public authentication endpoint. */
 
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import AuthLayout from '../components/AuthLayout.jsx'
 import AuthErrorMessage from '../components/AuthErrorMessage.jsx'
 import useAppState from '../state/useAppState.js'
@@ -10,6 +10,7 @@ import { validateRegistration } from './authValidation.js'
 /** Submit account details and present the API's validation feedback. */
 export default function RegisterPage() {
   const { signUp } = useAppState()
+  const location = useLocation()
   const navigate = useNavigate()
   const [error, setError] = useState(null)
   const [fieldError, setFieldError] = useState(null)
@@ -32,7 +33,10 @@ export default function RegisterPage() {
     setSubmitting(true)
     try {
       await signUp(account)
-      navigate('/login', { replace: true, state: { registrationComplete: true } })
+      navigate('/login', {
+        replace: true,
+        state: { from: location.state?.from, registrationComplete: true },
+      })
     } catch (requestError) {
       setError(requestError)
     } finally {
