@@ -16,7 +16,7 @@ The backend uses Python 3.12, Flask, SQLAlchemy, PostgreSQL, Poetry, Alembic, an
 - Read the task requirements and inspect the relevant implementation, tests, and current Git status before editing.
 - Follow the existing architecture and conventions. Keep changes within the task's scope; avoid adding layers, dependencies, or abstractions without a concrete need.
 - Preserve existing local and in-progress changes. Do not overwrite or revert work unrelated to the task.
-- Keep source code, identifiers, comments, and technical documentation in English. User-facing text may follow the language required by the product. Communicate with the project maintainer in Spanish.
+- Keep source code, identifiers, comments, and technical documentation in English. User-facing text may follow the language required by the product.
 - Use descriptive names, focused functions, and type annotations where they improve clarity. Add comments or docstrings when they explain a non-obvious decision, constraint, or public interface; avoid repeating what the code already says.
 - Match the formatter and linter configuration in each component rather than introducing new style rules.
 
@@ -66,4 +66,4 @@ See the component READMEs for local, component-specific commands and configurati
 
 Work on the current task branch. Do not discard local changes or use destructive Git operations. Do not commit, push, merge, or rebase unless requested.
 
-Before finishing, review the diff for scope, secrets, and unintended changes, and run `git diff --check`. Summarize the files changed, implementation decisions, verification results, and remaining limitations in Spanish.
+Before finishing, review the diff for scope, secrets, and unintended changes, and run `git diff --check`. Summarize changed files, implementation decisions, verification results, and remaining limitations clearly.

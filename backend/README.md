@@ -1,76 +1,76 @@
-# Backend de Mis Eventos
+# Mis Eventos Backend
 
-API HTTP para gestionar cuentas, eventos, sesiones e inscripciones. Está implementada con Python 3.12+, Flask, SQLAlchemy, PostgreSQL y Alembic. La especificación OpenAPI se sirve con Flasgger.
+HTTP API for managing accounts, events, sessions, and registrations. It uses Python 3.12+, Flask, SQLAlchemy, PostgreSQL, and Alembic. Flasgger serves the OpenAPI specification.
 
-## Arquitectura
+## Architecture
 
-El backend separa HTTP, casos de uso, dominio e infraestructura sin añadir una capa de controladores independiente: las rutas Flask actúan como controladores.
+The backend separates HTTP handling, use cases, domain logic, and infrastructure. Flask routes serve as controllers; there is no separate controller layer.
 
 ```mermaid
 flowchart LR
-    C[Frontend o cliente HTTP] --> F[Flask y blueprint]
-    F --> I[ID de correlación y registro HTTP]
-    I --> A{¿Ruta protegida?}
-    A -->|Sí| T[Cookie access_token y token_required]
+    C[Frontend or HTTP client] --> F[Flask and blueprint]
+    F --> I[Correlation ID and HTTP logging]
+    I --> A{Protected route?}
+    A -->|Yes| T[access_token cookie and token_required]
     A -->|No| V
-    T -->|Usuario autenticado| V[Validación de entrada]
-    T -->|No válido| E[Respuesta JSON de error]
-    V --> R[Ruta: HTTP y serialización]
-    R --> S[Servicio de aplicación]
-    S --> D[Entidades y contratos de dominio]
-    D --> P[Repositorio SQLAlchemy]
+    T -->|Authenticated user| V[Input validation]
+    T -->|Invalid| E[JSON error response]
+    V --> R[Route: HTTP and serialization]
+    R --> S[Application service]
+    S --> D[Domain entities and contracts]
+    D --> P[SQLAlchemy repository]
     P --> DB[(PostgreSQL)]
     DB --> P --> S --> R
-    R -->|Respuesta JSON| C
-    R -. excepción HTTP o inesperada .-> H[Manejadores globales Flask]
-    H -->|Error JSON y status HTTP| C
+    R -->|JSON response| C
+    R -. HTTP or unexpected exception .-> H[Global Flask error handlers]
+    H -->|JSON error and HTTP status| C
 ```
 
-- `app/api/`: blueprints, validación en el límite HTTP, autenticación, serialización, respuestas y manejadores globales de errores.
-- `app/application/`: coordinación de autenticación, eventos, registros, sesiones y salud; incluye DTOs y casos de uso.
-- `app/domain/`: entidades, excepciones, contratos de repositorio y reglas del dominio.
-- `app/infrastructure/`: modelos SQLAlchemy, repositorios y comprobación de salud.
-- `app/docs/`: OpenAPI y configuración de Swagger UI.
-- `app/observability/`: logs JSON y métricas Prometheus locales.
-- `migrations/`: revisiones Alembic; `tests/`: pruebas unitarias y de integración.
-- `dependencies.py` construye los servicios con repositorios asociados a la sesión SQLAlchemy actual; `main.py` configura Flask, extensiones, blueprints y componentes transversales.
+- `app/api/`: blueprints, HTTP boundary validation, authentication, serialization, responses, and global error handlers.
+- `app/application/`: authentication, event, registration, session, and health orchestration, including DTOs and use cases.
+- `app/domain/`: entities, exceptions, repository contracts, and domain rules.
+- `app/infrastructure/`: SQLAlchemy models, repositories, and health checks.
+- `app/docs/`: OpenAPI and Swagger UI configuration.
+- `app/observability/`: structured JSON logs and local Prometheus metrics.
+- `migrations/`: Alembic revisions; `tests/`: unit and integration tests.
+- `dependencies.py` wires services to repositories using the current SQLAlchemy session; `main.py` configures Flask, extensions, blueprints, and cross-cutting components.
 
-Las rutas públicas no leen una identidad. En las protegidas, `token_required` valida la cookie HttpOnly y adjunta el usuario autenticado; los servicios aplican además las reglas de propiedad y negocio. Errores de validación y de dominio se convierten en respuestas de API en las rutas; excepciones HTTP de Flask y fallos inesperados pasan por los manejadores globales. El cliente recibe JSON sin trazas internas.
+Public routes do not resolve a user identity. On protected routes, `token_required` validates the HttpOnly cookie and attaches the authenticated user; services also enforce ownership and business rules. Routes convert validation and domain errors into API responses, while Flask HTTP exceptions and unexpected failures pass through the global handlers. Clients receive JSON without internal tracebacks.
 
-## Requisitos y configuración local
+## Requirements and local setup
 
-Se necesitan Python 3.12 o superior, Poetry, Docker Compose si se usará PostgreSQL local mediante contenedor y, para las pruebas generales del repositorio, Node.js 22+, npm y GNU Make.
+You need Python 3.12 or later and Poetry. Use Docker Compose if PostgreSQL will run in a local container. Repository-wide checks also require Node.js 22+, npm, and GNU Make.
 
-Desde la raíz, prepara los archivos de entorno sin reemplazar configuraciones existentes:
+From the repository root, create missing environment files without replacing existing configuration:
 
 ```sh
 make setup
 ```
 
-Este comando crea `.env` desde `.env.example` cuando no existe y prepara las dependencias de ambos proyectos. `JWT_SECRET_KEY` viene vacío en el ejemplo: genera un valor local y cópialo en `.env`:
+This command creates `.env` from `.env.example` if it does not exist and prepares dependencies for both applications. The example leaves `JWT_SECRET_KEY` empty. Generate a local value and add it to `.env`:
 
 ```sh
 python3 -c 'import secrets; print(secrets.token_urlsafe(48))'
 ```
 
-No compartas ni subas `.env`. Las credenciales de PostgreSQL incluidas en Compose son solo para desarrollo local. Variables del backend:
+Do not share or commit `.env`. PostgreSQL credentials in Compose are for local development only. Backend variables:
 
-| Variable | Uso |
+| Variable | Purpose |
 | --- | --- |
-| `DATABASE_URL` | URL de PostgreSQL. Por defecto usa `localhost:5432`; Compose inyecta el host `db`. |
-| `JWT_SECRET_KEY` | Clave privada de firma JWT, mínimo 32 bytes. Obligatoria para autenticación y para que readiness responda disponible. |
-| `JWT_ACCESS_TOKEN_TTL_SECONDS` | Duración del token en segundos; predeterminado `3600`. Debe ser positivo. |
-| `JWT_COOKIE_SECURE` | Atributo Secure de la cookie. Predeterminado `false` en local; producción requiere `true`. |
-| `APP_ENVIRONMENT` | Etiqueta de entorno; predeterminada `local`. El nombre se normaliza a minúsculas. |
-| `APP_VERSION`, `SERVICE_NAME`, `LOG_LEVEL` | Etiquetas de logs y servicio. Predeterminados `dev`, `mis-eventos-backend` e `INFO`. |
+| `DATABASE_URL` | PostgreSQL connection URL. Defaults to `localhost:5432`; Compose injects the `db` hostname. |
+| `JWT_SECRET_KEY` | Private JWT signing key, at least 32 bytes. Required for authentication and a ready response. |
+| `JWT_ACCESS_TOKEN_TTL_SECONDS` | Token lifetime in seconds; defaults to `3600` and must be positive. |
+| `JWT_COOKIE_SECURE` | Cookie Secure attribute. Defaults to `false` locally; production requires `true`. |
+| `APP_ENVIRONMENT` | Environment label; defaults to `local` and is normalized to lowercase. |
+| `APP_VERSION`, `SERVICE_NAME`, `LOG_LEVEL` | Service and log labels. Defaults are `dev`, `mis-eventos-backend`, and `INFO`. |
 
-Para iniciar PostgreSQL local con Compose, desde la raíz:
+To start local PostgreSQL with Compose, run this command from the repository root:
 
 ```sh
 docker compose up -d db
 ```
 
-Las migraciones y Alembic deben recibir `DATABASE_URL`. Para ejecutar el backend directamente, abre una terminal en `backend`, carga las variables de la raíz y usa Poetry:
+Alembic migrations require `DATABASE_URL`. To run the backend directly, open a terminal in `backend`, load the root environment variables, and use Poetry:
 
 ```sh
 cd backend
@@ -82,11 +82,11 @@ poetry run alembic upgrade head
 poetry run python -m app
 ```
 
-El servidor escucha en el puerto `5000`; en el equipo local se accede como <http://localhost:5000>. `python -m app` no carga `.env` automáticamente, por eso el ejemplo exporta sus valores en la shell. Alembic lee la misma fuente `DATABASE_URL` que la aplicación.
+The server listens on port `5000` and is available locally at <http://localhost:5000>. `python -m app` does not load `.env` automatically, so the example exports its values in the shell. Alembic reads the same `DATABASE_URL` source as the application.
 
-### Ejecutar todo con Docker Compose
+### Run the full stack with Docker Compose
 
-Desde la raíz, crea `.env`, establece una clave JWT local de al menos 32 bytes y ejecuta:
+From the repository root, create `.env`, set a local JWT key of at least 32 bytes, then run:
 
 ```sh
 make check
@@ -95,83 +95,83 @@ make run
 make status
 ```
 
-`make run` construye e inicia `db`, `backend` y `frontend`, espera PostgreSQL, aplica las migraciones y comprueba las URLs de disponibilidad. `make stop` detiene y elimina los contenedores y la red, pero conserva el volumen PostgreSQL. No uses comandos de limpieza de volúmenes si quieres conservar los datos.
+`make run` builds and starts `db`, `backend`, and `frontend`, waits for PostgreSQL, applies migrations, and checks the availability URLs. `make stop` stops and removes the containers and network while preserving the PostgreSQL volume. Do not run volume cleanup commands if you need to keep the data.
 
-| Servicio | URL local |
+| Service | Local URL |
 | --- | --- |
-| Aplicación frontend | <http://localhost:5173> |
+| Frontend application | <http://localhost:5173> |
 | Backend | <http://localhost:5000> |
 | Swagger UI | <http://localhost:5000/apidocs/> |
-| Especificación OpenAPI JSON | <http://localhost:5000/apispec_1.json> |
-| Salud básica | <http://localhost:5000/api/v1/health> |
+| OpenAPI JSON specification | <http://localhost:5000/apispec_1.json> |
+| Basic health | <http://localhost:5000/api/v1/health> |
 | Liveness | <http://localhost:5000/api/v1/live> |
 | Readiness | <http://localhost:5000/api/v1/ready> |
-| Métricas | <http://localhost:5000/metrics> |
+| Metrics | <http://localhost:5000/metrics> |
 
-Swagger requiere que el backend esté iniciado. El archivo fuente es `app/docs/openapi.yaml`. `health` solo confirma que la ruta responde; `live` confirma que Flask está disponible; `ready` comprueba la clave JWT y ejecuta `SELECT 1` en PostgreSQL, con 503 si falla una dependencia.
+Swagger requires the backend to be running. Its source file is `app/docs/openapi.yaml`. `health` confirms the route responds; `live` confirms Flask is serving requests; `ready` validates the JWT key and runs `SELECT 1` against PostgreSQL, returning 503 if a dependency fails.
 
-## API HTTP
+## HTTP API
 
-El prefijo de todas las rutas de recursos es `/api/v1`. Las rutas protegidas requieren la cookie `access_token`, que establece el endpoint de login. Los errores JSON usan `{ "error": { "code": "…", "message": "…" } }`; conflictos de concurrencia también pueden incluir `current_version`. Las respuestas 204 no tienen cuerpo.
+All resource routes use the `/api/v1` prefix. Protected routes require the `access_token` cookie set by the login endpoint. JSON errors use `{ "error": { "code": "…", "message": "…" } }`; concurrency conflicts may also include `current_version`. Responses with status 204 have no body.
 
-### Autenticación
+### Authentication
 
-| Método y ruta | Acceso | Resultado principal |
+| Method and route | Access | Main result |
 | --- | --- | --- |
-| `POST /auth/register` | Público | Crea cuenta, 201; 400 si los datos no validan, 409 si el correo ya existe. |
-| `POST /auth/login` | Público | Comprueba credenciales y establece cookie HttpOnly; 200, 401 o 503 si falta configuración JWT. |
-| `GET /auth/me` | Cookie | Devuelve el perfil público actual; 401 ante cookie ausente o inválida. |
-| `POST /auth/logout` | Público | Expira la cookie y devuelve 204. |
+| `POST /auth/register` | Public | Creates an account (201); 400 for invalid input, 409 if the email already exists. |
+| `POST /auth/login` | Public | Checks credentials and sets an HttpOnly cookie (200); 401 for invalid credentials or 503 if JWT configuration is unavailable. |
+| `GET /auth/me` | Cookie | Returns the current public profile; 401 if the cookie is missing or invalid. |
+| `POST /auth/logout` | Public | Expires the cookie and returns 204. |
 
-### Eventos
+### Events
 
-| Método y ruta | Acceso | Uso y respuestas relevantes |
+| Method and route | Access | Purpose and relevant responses |
 | --- | --- | --- |
-| `GET /events` | Público | Catálogo paginado; acepta `page`, `page_size` y `q`; devuelve `events` y `pagination`. |
-| `GET /events/{event_id}` | Público | Detalle del evento; 404 si no existe. |
-| `GET /events/{event_id}/capacity` | Público | Capacidad, ocupación y cupos disponibles; 404 si no existe. |
-| `GET /events/mine` | Cookie | Eventos propios; acepta `page`, `page_size`, `q` y `status`. La propiedad se obtiene de la sesión, no de un ID enviado. |
-| `GET /events/mine/summary` | Cookie | Resumen de eventos propios. |
-| `GET /events/mine/{event_id}` | Cookie y propietario | Detalle para administración; evento no propio o inexistente se informa como 404. |
-| `POST /events` | Cookie | Crea un evento y devuelve 201 con `event`; requiere datos válidos. |
-| `PATCH /events/{event_id}` | Cookie y propietario | Actualiza campos del evento; requiere `version`; 403 sin permiso, 404 inexistente, 409 conflicto de versión. |
-| `DELETE /events/{event_id}` | Cookie y propietario | Elimina y responde 204; 403 sin permiso, 404 inexistente, 409 si hay registros relacionados. |
+| `GET /events` | Public | Paginated catalog; accepts `page`, `page_size`, and `q`; returns `events` and `pagination`. |
+| `GET /events/{event_id}` | Public | Event details; 404 if not found. |
+| `GET /events/{event_id}/capacity` | Public | Capacity, occupancy, and available seats; 404 if not found. |
+| `GET /events/mine` | Cookie | Lists the caller's events; accepts `page`, `page_size`, `q`, and `status`. Ownership comes from the session, not a submitted ID. |
+| `GET /events/mine/summary` | Cookie | Summary of the caller's events. |
+| `GET /events/mine/{event_id}` | Cookie and owner | Administrative event details; an event not owned by the caller or not found returns 404. |
+| `POST /events` | Cookie | Creates an event and returns 201 with `event`; valid input is required. |
+| `PATCH /events/{event_id}` | Cookie and owner | Updates event fields; requires `version`; 403 if forbidden, 404 if not found, 409 on version conflict. |
+| `DELETE /events/{event_id}` | Cookie and owner | Deletes the event and returns 204; 403 if forbidden, 404 if not found, 409 if related records exist. |
 
-### Inscripciones a eventos
+### Event registrations
 
-| Método y ruta | Acceso | Uso y respuestas relevantes |
+| Method and route | Access | Purpose and relevant responses |
 | --- | --- | --- |
-| `GET /registrations/me` | Cookie | Lista inscripciones propias con `page`, `page_size`, `status` y `period`. |
-| `GET /registrations/me/summary` | Cookie | Resumen de las inscripciones propias. |
-| `POST /events/{event_id}/registrations/me` | Cookie | Crea o reactiva inscripción; 201. Devuelve 404 si el evento no existe y 409 si no admite registros, no hay cupos o ya existe uno activo. |
-| `DELETE /events/{event_id}/registrations/me` | Cookie | Cancela la inscripción propia y las inscripciones activas a sus sesiones; devuelve 204. |
+| `GET /registrations/me` | Cookie | Lists the caller's registrations; accepts `page`, `page_size`, `status`, and `period`. |
+| `GET /registrations/me/summary` | Cookie | Summary of the caller's registrations. |
+| `POST /events/{event_id}/registrations/me` | Cookie | Creates or reactivates a registration (201); 404 if the event is missing, 409 if registration is unavailable, capacity is full, or an active registration already exists. |
+| `DELETE /events/{event_id}/registrations/me` | Cookie | Cancels the caller's event registration and active session registrations; returns 204. |
 
-### Sesiones y asistentes
+### Sessions and attendees
 
-| Método y ruta | Acceso | Uso y respuestas relevantes |
+| Method and route | Access | Purpose and relevant responses |
 | --- | --- | --- |
-| `GET /events/{event_id}/sessions` | Público | Lista sesiones del evento. |
-| `GET /events/{event_id}/sessions/{session_id}` | Público | Devuelve una sesión perteneciente al evento. |
-| `POST /events/{event_id}/sessions` | Cookie y propietario del evento | Crea sesión; 201; 403 si no es propietario. |
-| `PATCH /events/{event_id}/sessions/{session_id}` | Cookie y propietario del evento | Actualiza sesión; requiere `version`; 403 sin permiso y 409 ante conflicto. |
-| `DELETE /events/{event_id}/sessions/{session_id}` | Cookie y propietario del evento | Elimina sesión y devuelve 204; 403 sin permiso. |
-| `GET /events/{event_id}/sessions/{session_id}/capacity` | Público | Devuelve capacidad, ocupación y cupos disponibles. |
-| `GET /events/{event_id}/sessions/{session_id}/attendees` | Cookie y propietario del evento | Lista asistentes; 403 si no es propietario. |
-| `POST /events/{event_id}/sessions/{session_id}/attendees` | Cookie | Inscribe al usuario actual; 201 o 409 por duplicidad/capacidad. |
-| `DELETE /events/{event_id}/sessions/{session_id}/attendees/me` | Cookie | Cancela solo la inscripción propia; devuelve 204. |
+| `GET /events/{event_id}/sessions` | Public | Lists an event's sessions. |
+| `GET /events/{event_id}/sessions/{session_id}` | Public | Returns a session belonging to the event. |
+| `POST /events/{event_id}/sessions` | Cookie and event owner | Creates a session (201); 403 if the caller is not the owner. |
+| `PATCH /events/{event_id}/sessions/{session_id}` | Cookie and event owner | Updates a session; requires `version`; 403 if forbidden, 409 on conflict. |
+| `DELETE /events/{event_id}/sessions/{session_id}` | Cookie and event owner | Deletes a session and returns 204; 403 if forbidden. |
+| `GET /events/{event_id}/sessions/{session_id}/capacity` | Public | Returns capacity, occupancy, and available seats. |
+| `GET /events/{event_id}/sessions/{session_id}/attendees` | Cookie and event owner | Lists attendees; 403 if the caller is not the owner. |
+| `POST /events/{event_id}/sessions/{session_id}/attendees` | Cookie | Registers the current user; 201 or 409 for duplicate registration or capacity limits. |
+| `DELETE /events/{event_id}/sessions/{session_id}/attendees/me` | Cookie | Cancels only the caller's registration; returns 204. |
 
-La creación de sesión requiere `title`, `starts_at`, `ends_at` y `capacity`; `description` y `speaker_ids` son opcionales. En actualizaciones de eventos y sesiones se requiere `version` para control de concurrencia. Las fechas de una sesión deben estar dentro del intervalo del evento.
+Session creation requires `title`, `starts_at`, `ends_at`, and `capacity`; `description` and `speaker_ids` are optional. Event and session updates require `version` for concurrency control. Session dates must fall within the event time range.
 
-### Ejemplos con curl
+### curl examples
 
-Con el backend local iniciado, consulta salud y catálogo:
+With the local backend running, check its health and event catalog:
 
 ```sh
 curl -i http://localhost:5000/api/v1/health
 curl -i 'http://localhost:5000/api/v1/events?page=1&page_size=20'
 ```
 
-Registra una cuenta de prueba (usa un correo que no esté ya registrado) y luego inicia sesión. El cookie jar conserva la cookie HTTP entre las llamadas:
+Register a test account (use an email address that is not already registered), then sign in. The cookie jar retains the HTTP cookie between requests:
 
 ```sh
 curl -i -X POST http://localhost:5000/api/v1/auth/register \
@@ -184,18 +184,18 @@ curl -i -c /tmp/mis-eventos-cookies.txt -X POST http://localhost:5000/api/v1/aut
 curl -i -b /tmp/mis-eventos-cookies.txt http://localhost:5000/api/v1/auth/me
 ```
 
-Con esa sesión puedes crear un evento. Ajusta las fechas a un intervalo futuro y válido; sustituye `{event_id}` por el ID devuelto para consultarlo o inscribirte:
+Use that session to create an event. Set a valid future time range, then replace `{event_id}` with the returned ID to retrieve or register for the event:
 
 ```sh
 curl -i -b /tmp/mis-eventos-cookies.txt -X POST http://localhost:5000/api/v1/events \
   -H 'Content-Type: application/json' \
-  -d '{"title":"Evento de prueba","description":"Datos de ejemplo","location":"Medellín","starts_at":"2030-05-01T14:00:00Z","ends_at":"2030-05-01T16:00:00Z","capacity":20,"status":"published"}'
+  -d '{"title":"Sample event","description":"Example data","location":"Medellín","starts_at":"2030-05-01T14:00:00Z","ends_at":"2030-05-01T16:00:00Z","capacity":20,"status":"published"}'
 
 curl -i -b /tmp/mis-eventos-cookies.txt -X POST \
   http://localhost:5000/api/v1/events/{event_id}/registrations/me
 ```
 
-La inscripción requiere un evento publicado, futuro y con capacidad. Si eres el creador, también puedes añadir una sesión dentro del intervalo del evento:
+Registration requires a published future event with available capacity. As the event creator, you can also add a session within the event time range:
 
 ```sh
 curl -i -b /tmp/mis-eventos-cookies.txt -X POST \
@@ -204,19 +204,19 @@ curl -i -b /tmp/mis-eventos-cookies.txt -X POST \
   -d '{"title":"Taller de ejemplo","starts_at":"2030-05-01T14:00:00Z","ends_at":"2030-05-01T15:00:00Z","capacity":20}'
 ```
 
-Para cerrar la sesión:
+To sign out:
 
 ```sh
 curl -i -b /tmp/mis-eventos-cookies.txt -X POST http://localhost:5000/api/v1/auth/logout
 ```
 
-## Logs, métricas y pruebas
+## Logs, metrics, and tests
 
-Los logs JSON de ciclo de vida y solicitudes se escriben en stdout e incluyen el `X-Request-ID` de correlación. El servidor devuelve ese ID en la respuesta; los IDs entrantes se aceptan solo si tienen formato y longitud acotados. En Compose, consulta logs con `make logs` o `docker compose logs --tail=100 backend`.
+Lifecycle and request JSON logs are written to stdout and include the correlation `X-Request-ID`. The server returns this ID in the response and accepts incoming IDs only when their format and length are bounded. With Compose, view logs using `make logs` or `docker compose logs --tail=100 backend`.
 
-`GET /metrics` expone las métricas Prometheus del proceso: solicitudes y latencia HTTP (por plantilla de ruta, método y status), solicitudes en curso, eventos creados e inscripciones completadas. Métricas, liveness, readiness y health no se incluyen en los contadores HTTP. La ruta publicada de métricas está enlazada a loopback por Compose.
+`GET /metrics` exposes process-level Prometheus metrics: HTTP request counts and latency (by route template, method, and status), in-progress requests, created events, and completed registrations. Metrics, liveness, readiness, and health routes are excluded from HTTP counters. Compose binds the published metrics route to loopback.
 
-Desde `backend/`:
+From `backend/`:
 
 ```sh
 poetry run pytest
@@ -228,13 +228,13 @@ set +a
 poetry run alembic current
 ```
 
-Desde la raíz, `make test-backend` ejecuta pytest con cobertura de líneas y ramas; `make lint` ejecuta Ruff y ESLint. `make migrate` aplica migraciones en el stack Compose activo. Si readiness responde 503, revisa que PostgreSQL esté disponible, que Alembic haya aplicado el esquema y que `JWT_SECRET_KEY` tenga al menos 32 bytes. `make status` y `make logs` ayudan a diagnosticar el stack sin mostrar valores secretos.
+From the repository root, `make test-backend` runs pytest with line and branch coverage; `make lint` runs Ruff and ESLint. `make migrate` applies migrations to the active Compose stack. If readiness returns 503, check PostgreSQL availability, confirm Alembic applied the schema, and ensure `JWT_SECRET_KEY` is at least 32 bytes. Use `make status` and `make logs` to diagnose the stack without exposing secrets.
 
-## Probar la aplicación completa
+## Run the full application
 
-1. Desde la raíz, prepara `.env` con `make setup` y establece un `JWT_SECRET_KEY` local.
-2. Ejecuta `make run`: inicia PostgreSQL, backend y frontend, aplica migraciones y espera los health checks.
-3. Comprueba `http://localhost:5000/api/v1/ready` y abre Swagger en <http://localhost:5000/apidocs/>.
-4. Abre <http://localhost:5173>, crea una cuenta o inicia sesión y crea un evento con fecha futura.
-5. Abre el evento, crea una sesión e inscríbete desde otra cuenta para probar el flujo de asistente. Las acciones de administración se limitan al creador.
-6. Ante un fallo, consulta `make status`, `make logs` y la consola de red del navegador. Detén el entorno con `make stop`; el volumen de base de datos se conserva.
+1. From the repository root, prepare `.env` with `make setup` and set a local `JWT_SECRET_KEY`.
+2. Run `make run` to start PostgreSQL, the backend, and the frontend, apply migrations, and wait for health checks.
+3. Check `http://localhost:5000/api/v1/ready` and open Swagger at <http://localhost:5000/apidocs/>.
+4. Open <http://localhost:5173>, create an account or sign in, and create an event scheduled in the future.
+5. Open the event, add a session, and register from another account to test the attendee flow. Management actions are restricted to the creator.
+6. If something fails, check `make status`, `make logs`, and the browser's Network tools. Stop the environment with `make stop`; the database volume is preserved.

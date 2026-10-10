@@ -18,6 +18,7 @@ from app.domain.entities.event_registration import EventRegistrationRecord
 from app.extensions import db
 from app.main import create_app
 from app.observability.logging import JsonFormatter, get_logger
+from app.observability.metrics import increment_business_metric
 
 
 def test_json_formatter_includes_common_fields_and_redacts_secrets():
@@ -403,3 +404,104 @@ def test_business_counters_increment_only_after_successful_operations(monkeypatc
 
     assert "mis_eventos_business_events_created_total 1.0" in exposition_text
     assert "mis_eventos_business_registrations_total 1.0" in exposition_text
+
+
+def test_business_metric_is_ignored_without_flask_context():
+    """Allow optional business instrumentation outside Flask execution."""
+    increment_business_metric("event_created")
+
+
+def test_business_metric_is_ignored_when_extension_is_not_registered():
+    """Allow a partial Flask app to run without metrics initialization."""
+    app = Flask(__name__)
+
+    with app.app_context():
+        increment_business_metric("event_created")
+
+
+def test_business_operation_succeeds_without_metrics_extension():
+    """Keep event creation successful when a partial app has no metrics extension."""
+    app = Flask(__name__)
+    event = EventRecord(
+        id=8,
+        title="Metrics unavailable",
+        starts_at=datetime(2032, 1, 1, 10, tzinfo=UTC),
+        ends_at=datetime(2032, 1, 1, 11, tzinfo=UTC),
+        capacity=20,
+        created_by_id=9,
+    )
+    event_repository = Mock()
+    event_repository.save.return_value = event
+
+    with app.app_context():
+        created = EventService(event_repository).create(
+            {
+                "title": "Metrics unavailable",
+                "starts_at": "2032-01-01T10:00:00+00:00",
+                "ends_at": "2032-01-01T11:00:00+00:00",
+                "capacity": 20,
+            },
+            creator_id=9,
+        )
+
+    assert created is event
+    event_repository.save.assert_called_once()
+
+
+def test_business_operation_succeeds_when_metric_recording_fails(monkeypatch):
+    """Keep successful event and registration writes when an optional counter fails."""
+    monkeypatch.setenv("JWT_SECRET_KEY", "m" * 40)
+    app = create_app()
+    event = EventRecord(
+        id=7,
+        title="Metrics resilience",
+        starts_at=datetime(2032, 1, 1, 10, tzinfo=UTC),
+        ends_at=datetime(2032, 1, 1, 11, tzinfo=UTC),
+        capacity=20,
+        created_by_id=9,
+    )
+    event_repository = Mock()
+    event_repository.save.return_value = event
+    registration = EventRegistrationRecord(8, 7, 9, "registered")
+    registration_repository = Mock()
+    registration_repository.register.return_value = registration
+    handler = get_logger("metrics").parent.handlers[0]
+    previous_stream = handler.stream
+    stream = StringIO()
+    handler.setStream(stream)
+
+    try:
+        with app.app_context():
+            metrics = app.extensions["mis_eventos_metrics"]
+            monkeypatch.setattr(
+                metrics.business_events_created,
+                "inc",
+                Mock(side_effect=RuntimeError("event metric failure")),
+            )
+            monkeypatch.setattr(
+                metrics.business_registrations,
+                "inc",
+                Mock(side_effect=RuntimeError("registration metric failure")),
+            )
+            created = EventService(event_repository).create(
+                {
+                    "title": "Metrics resilience",
+                    "starts_at": "2032-01-01T10:00:00+00:00",
+                    "ends_at": "2032-01-01T11:00:00+00:00",
+                    "capacity": 20,
+                },
+                creator_id=9,
+            )
+            registered = EventRegistrationService(registration_repository).register(
+                7, 9
+            )
+    finally:
+        handler.setStream(previous_stream)
+
+    assert created is event
+    assert registered is registration
+    event_repository.save.assert_called_once()
+    registration_repository.register.assert_called_once_with(7, 9)
+    assert "Optional business metric recording failed." in stream.getvalue()
+    assert "event metric failure" in stream.getvalue()
+    assert "registration metric failure" in stream.getvalue()

@@ -10,6 +10,10 @@ from prometheus_client import (
 )
 from prometheus_client.exposition import CONTENT_TYPE_LATEST
 
+from app.observability.logging import get_logger
+
+logger = get_logger("metrics")
+
 
 class ApplicationMetrics:
     """Hold bounded-cardinality HTTP and supported business metric collectors."""
@@ -52,11 +56,22 @@ class ApplicationMetrics:
 
 
 def increment_business_metric(name: str) -> None:
-    """Increment a supported business counter when running inside the Flask app."""
+    """Increment a supported counter without interrupting its business operation."""
     if not has_app_context():
         return
-    metrics: ApplicationMetrics = current_app.extensions["mis_eventos_metrics"]
-    if name == "event_created":
-        metrics.business_events_created.inc()
-    elif name == "registration_completed":
-        metrics.business_registrations.inc()
+    metrics: ApplicationMetrics | None = current_app.extensions.get(
+        "mis_eventos_metrics"
+    )
+    if metrics is None:
+        return
+
+    try:
+        if name == "event_created":
+            metrics.business_events_created.inc()
+        elif name == "registration_completed":
+            metrics.business_registrations.inc()
+    except Exception:
+        logger.exception(
+            "Optional business metric recording failed.",
+            extra={"metric": name},
+        )

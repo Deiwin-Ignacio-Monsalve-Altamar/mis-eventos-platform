@@ -52,9 +52,9 @@ event detail, create-event form, authentication, profile, and registration list:
   error states.
 - Event cards preserve the backend's event fields and use abstract brand artwork
   when the API has no event image.
-- Session availability uses a star marker plus text. “Disponible”, “Sin cupos”,
+- Session availability uses a star marker plus text. “Available”, “Full”,
   pending, and unknown labels only reflect the capacity endpoint's values or
-  request state. The interface does not estimate “últimos cupos”.
+  request state. The interface does not estimate “last seats”.
 - Profile registration labels distinguish active and cancelled records.
 
 Avoid adding presentation-only data or deriving availability from an event's
