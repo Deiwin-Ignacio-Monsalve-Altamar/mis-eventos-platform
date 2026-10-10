@@ -609,6 +609,8 @@ h2 {
   font-size: clamp(2rem, 4vw, 3rem);
 }
 
+.profile-identity .button { margin-top: 14px; }
+
 .profile-identity > p:last-child {
   margin: 0;
   color: var(--muted);
@@ -670,6 +672,8 @@ h2 {
   padding: 18px 0;
   border-bottom: 1px solid var(--line);
 }
+
+.registration-item .button { grid-column: 2 / -1; justify-self: start; }
 
 .registration-date {
   display: grid;
@@ -970,6 +974,8 @@ h2 {
     grid-column: 2;
     justify-self: start;
   }
+
+  .registration-item .button { grid-column: 2; }
 
   .profile-pagination {
     flex-wrap: wrap;
@@ -1376,6 +1382,67 @@ h1, h2 { color: var(--ink); }
 .event-detail-copy .eyebrow { color: var(--accent-pink-ink); }
 .event-detail-copy .event-facts div { border: 1px solid #ece7f5; border-radius: 14px; background: #fbfaff; }
 .event-registration .button-primary { background: var(--brand); }
+.event-management { margin-top: 26px; padding-top: 20px; border-top: 1px solid var(--line); }
+.event-management-actions { flex-wrap: wrap; gap: 10px; }
+.event-management-signin { margin-top: 24px; }
+.event-edit-panel { padding: 22px; border: 1px solid #e5dcf8; border-radius: var(--radius-card); background: #fbfaff; }
+.event-edit-panel h2 { margin-bottom: 8px; }
+.event-edit-panel .app-form { margin-top: 18px; }
+.event-form-actions { flex-wrap: wrap; }
+.field-hint { color: var(--muted); font-size: .78rem; font-weight: 450; }
+.button-danger { border-color: #e8bfd0; background: #fff7fa; color: #8d1b4f; }
+.button-danger:hover:not(:disabled) { border-color: #c83e79; background: #fff0f6; }
+.organizer-page { width: min(100%, 1040px); margin: 0 auto; }
+.organizer-page-heading { display: flex; align-items: end; justify-content: space-between; gap: 24px; margin-bottom: 28px; }
+.organizer-page-heading h1 { margin: 0 0 8px; font-size: clamp(2.2rem, 5vw, 3.4rem); }
+.organizer-page-heading p:last-child { margin: 0; color: var(--muted); }
+.organizer-filters { display: flex; flex-wrap: wrap; align-items: end; gap: 14px; margin: 0 0 22px; padding: 18px; border: 1px solid var(--line); border-radius: var(--radius-card); background: #fff; }
+.organizer-filters label { display: grid; min-width: min(100%, 220px); flex: 1; gap: 6px; color: var(--ink); font-size: .85rem; font-weight: 650; }
+.organizer-filters input, .organizer-filters select { min-height: 44px; padding: 9px 11px; border: 1px solid #d8d4e5; border-radius: var(--radius-control); background: #fff; color: var(--ink); }
+.organizer-event-list, .attendance-list { display: grid; gap: 16px; }
+.organizer-event-card, .attendance-card { display: grid; grid-template-columns: minmax(170px, 240px) minmax(0, 1fr); gap: 22px; padding: 18px; border: 1px solid #e5e1ef; border-radius: var(--radius-card); background: #fff; box-shadow: var(--shadow-card); }
+.organizer-event-card > .event-artwork, .attendance-card > .event-artwork { min-height: 180px; border-radius: 14px; }
+.organizer-event-copy h2, .attendance-card-copy h2 { margin: 12px 0 8px; font-size: 1.35rem; }
+.organizer-event-copy h2 a, .attendance-card-copy h2 a { color: var(--ink); text-decoration: none; }
+.organizer-event-copy h2 a:hover, .attendance-card-copy h2 a:hover { color: var(--brand-dark); text-decoration: underline; text-underline-offset: 3px; }
+.organizer-event-copy p, .attendance-card-copy p { color: var(--muted); }
+.organizer-empty { display: grid; justify-items: start; gap: 14px; padding: 24px; border: 1px solid var(--line); border-radius: var(--radius-card); background: #fff; }
+.attendance-badges { display: flex; flex-wrap: wrap; gap: 8px; }
+.registration-state-registered { background: #e4faf3; color: var(--accent-turquoise-ink); }
+.registration-state-cancelled { background: #f2f1f7; color: #5c6070; }
+.attendance-note { padding: 10px 12px; border-left: 3px solid var(--accent-yellow); background: #fff9d9; color: #534a1e !important; font-size: .84rem; }
+.profile-activity { padding: clamp(24px, 4vw, 40px); border: 1px solid #e4dcfb; border-radius: var(--radius-card); background: #fff; box-shadow: var(--shadow-card); }
+.activity-group-heading { margin: 28px 0 14px; font-size: 1.18rem; }
+.activity-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; margin: 18px 0; }
+.activity-metrics > div { padding: 15px; border: 1px solid #e8e2f5; border-radius: 14px; background: #fbfaff; }
+.activity-metrics dt { color: var(--muted); font-size: .78rem; font-weight: 650; }
+.activity-metrics dd { margin: 6px 0 0; color: var(--brand-dark); font-size: 1.75rem; font-weight: 750; }
+.event-status-chart { max-width: 650px; margin: 20px 0 24px; }
+.event-status-chart-row { display: grid; grid-template-columns: 110px minmax(0, 1fr) 32px; align-items: center; gap: 10px; margin: 9px 0; font-size: .82rem; }
+.event-status-track { height: 10px; overflow: hidden; border-radius: 999px; background: #eeeaf5; }
+.event-status-track span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--brand), var(--accent-pink)); }
+.event-status-chart > p { color: var(--muted); font-size: .78rem; }
+.profile-owned-events { display: grid; gap: 10px; }
+.profile-owned-event { display: grid; grid-template-columns: 76px minmax(0, 1fr) auto; align-items: center; gap: 14px; padding: 10px; border: 1px solid var(--line); border-radius: 14px; }
+.profile-owned-event .event-artwork { min-height: 58px; border-radius: 10px; }
+.profile-owned-event h4 { margin: 6px 0 0; }
+.profile-owned-event h4 a { color: var(--ink); }
+.profile-activity .profile-section-heading { align-items: center; }
+.profile-activity .profile-section-heading .button-row { flex-wrap: wrap; }
+.profile-registrations { margin-top: 22px; }
+.registration-details .status-badge { display: inline-block; margin-top: 8px; }
+
+@media (max-width: 650px) {
+  .organizer-page-heading { align-items: flex-start; flex-direction: column; }
+  .organizer-event-card, .attendance-card { grid-template-columns: 1fr; gap: 14px; }
+  .organizer-event-card > .event-artwork, .attendance-card > .event-artwork { min-height: 150px; }
+  .profile-activity .profile-section-heading { align-items: flex-start; flex-direction: column; }
+  .profile-activity .profile-section-heading .button-row { width: 100%; }
+  .profile-activity .profile-section-heading .button { flex: 1 1 100%; }
+  .profile-owned-event { grid-template-columns: 54px minmax(0, 1fr); }
+  .profile-owned-event > .text-link { grid-column: 2; }
+  .event-status-chart-row { grid-template-columns: 92px minmax(0, 1fr) 24px; gap: 7px; }
+}
 .event-sessions-section > header .eyebrow { color: var(--accent-pink-ink); }
 .session-item { border-color: #e7e0f4; border-radius: 14px; box-shadow: 0 4px 14px rgb(52 37 102 / 4%); }
 .session-index { color: var(--accent-pink-ink); }
@@ -1450,6 +1517,9 @@ h1, h2 { color: var(--ink); }
   .registration-date { min-height: 50px; }
   .registration-status { grid-column: 2; justify-self: start; }
   .form-columns { grid-template-columns: 1fr; }
+  .event-edit-panel { padding: 18px; }
+  .event-management-actions .button { flex: 1 1 auto; }
+  .event-form-actions .button { flex: 1 1 100%; }
   .session-item { border-radius: 14px; }
   .pagination-controls .button { min-width: 90px; padding-right: 10px; padding-left: 10px; }
 }

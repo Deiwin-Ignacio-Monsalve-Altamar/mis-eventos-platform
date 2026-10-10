@@ -24,7 +24,9 @@ test('application provider renders every required route without a blank screen',
       ['/events/new', 'Estamos verificando tu sesión…'],
       ['/login', '¡Qué bueno verte!'],
       ['/register', 'Crea tu cuenta'],
-      ['/profile', 'Estamos cargando tu perfil…'],
+      ['/profile', 'Estamos verificando tu sesión…'],
+      ['/my-events', 'Estamos verificando tu sesión…'],
+      ['/my-registrations', 'Estamos verificando tu sesión…'],
       ['/route-that-does-not-exist', 'Página no encontrada'],
     ]
 
@@ -60,6 +62,7 @@ test('application provider renders every required route without a blank screen',
       ),
     )
     assert.ok(authenticatedHeader.includes('href="/profile"'), 'Authenticated users must have a profile link.')
+    assert.ok(authenticatedHeader.includes('href="/my-events"'), 'Authenticated users must have a link to their events.')
     assert.ok(!authenticatedHeader.includes('Únete gratis'), 'Authenticated users must not see the registration CTA.')
   } finally {
     await vite.close()

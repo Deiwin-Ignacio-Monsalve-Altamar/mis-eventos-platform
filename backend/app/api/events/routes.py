@@ -4,8 +4,10 @@ from flask import Blueprint, g, jsonify, request
 
 from app.api.auth.decorators import token_required
 from app.api.responses import concurrency_conflict_response, error_response
+from app.application.dto.event_page import EventPage
 from app.application.events.service import EDITABLE_FIELDS
 from app.core.exceptions import (
+    AuthorizationError,
     ConcurrencyConflictError,
     DuplicateRegistrationError,
     EventCapacityExceededError,
@@ -57,6 +59,47 @@ def get_event(event_id: int):
     return jsonify({"event": _serialize_event(event)}), 200
 
 
+@event_bp.get("/events/mine")
+@token_required
+def list_my_events():
+    """Return a paginated list scoped to the authenticated event creator."""
+    if "creator_id" in request.args or "user_id" in request.args:
+        return error_response(
+            "invalid_request",
+            "Event ownership is determined by the authenticated account.",
+            400,
+        )
+    try:
+        page = get_event_service().list_my_events(
+            g.current_user.id,
+            request.args.get("page"),
+            request.args.get("page_size"),
+            request.args.get("q"),
+            request.args.get("status"),
+        )
+    except ValidationError as error:
+        return error_response("validation_error", str(error), 400)
+    return jsonify(_serialize_event_page(page)), 200
+
+
+@event_bp.get("/events/mine/summary")
+@token_required
+def my_event_dashboard():
+    """Return status and date metrics for events owned by the current user."""
+    return jsonify({"summary": get_event_service().dashboard(g.current_user.id)}), 200
+
+
+@event_bp.get("/events/mine/<int:event_id>")
+@token_required
+def get_my_event(event_id: int):
+    """Return an event-management record only when it belongs to the caller."""
+    try:
+        event = get_event_service().get_my_event(event_id, g.current_user.id)
+    except NotFoundError as error:
+        return error_response("not_found", str(error), 404)
+    return jsonify({"event": _serialize_event(event)}), 200
+
+
 @event_bp.post("/events")
 @token_required
 def create_event():
@@ -94,7 +137,10 @@ def update_event(event_id: int):
 
     try:
         event = get_event_service().update(
-            event_id, _editable_values(request_data), expected_version
+            event_id,
+            _editable_values(request_data),
+            expected_version,
+            creator_id=g.current_user.id,
         )
     except ConcurrencyConflictError as error:
         return concurrency_conflict_response(str(error), error.current_version)
@@ -102,6 +148,8 @@ def update_event(event_id: int):
         return error_response("validation_error", str(error), 400)
     except NotFoundError as error:
         return error_response("not_found", str(error), 404)
+    except AuthorizationError as error:
+        return error_response("forbidden", str(error), 403)
 
     return jsonify({"event": _serialize_event(event)}), 200
 
@@ -111,11 +159,13 @@ def update_event(event_id: int):
 def delete_event(event_id: int):
     """Delete an event when it has no registrations or other related records."""
     try:
-        get_event_service().delete(event_id)
+        get_event_service().delete(event_id, creator_id=g.current_user.id)
     except NotFoundError as error:
         return error_response("not_found", str(error), 404)
     except RelatedRecordsError as error:
         return error_response("related_records", str(error), 409)
+    except AuthorizationError as error:
+        return error_response("forbidden", str(error), 403)
 
     return "", 204
 
@@ -135,6 +185,8 @@ def list_my_event_registrations():
             g.current_user.id,
             page=request.args.get("page"),
             page_size=request.args.get("page_size"),
+            status=request.args.get("status"),
+            period=request.args.get("period"),
         )
     except ValidationError as error:
         return error_response("validation_error", str(error), 400)
@@ -157,6 +209,29 @@ def list_my_event_registrations():
                 "total": page.total,
                 "total_pages": total_pages,
             },
+        }
+    ), 200
+
+
+@event_bp.get("/events/<int:event_id>/capacity")
+def event_registration_capacity(event_id: int):
+    """Return public event capacity using active registrations only."""
+    try:
+        capacity = get_event_registration_service().capacity_for_event(event_id)
+    except NotFoundError as error:
+        return error_response("not_found", str(error), 404)
+    return jsonify(capacity), 200
+
+
+@event_bp.get("/registrations/me/summary")
+@token_required
+def my_registration_summary():
+    """Return attendance counts derived only from the caller's registrations."""
+    return jsonify(
+        {
+            "summary": get_event_registration_service().summary_for_user(
+                g.current_user.id
+            )
         }
     ), 200
 
@@ -208,6 +283,20 @@ def cancel_event_registration(event_id: int):
 def _editable_values(request_data: dict[str, object]) -> dict[str, object]:
     """Select supported event fields and ignore client-supplied identity fields."""
     return {key: value for key, value in request_data.items() if key in EDITABLE_FIELDS}
+
+
+def _serialize_event_page(page: EventPage) -> dict[str, object]:
+    """Serialize an event page with the established pagination contract."""
+    total_pages = (page.total + page.page_size - 1) // page.page_size
+    return {
+        "events": [_serialize_event(event) for event in page.events],
+        "pagination": {
+            "page": page.page,
+            "page_size": page.page_size,
+            "total": page.total,
+            "total_pages": total_pages,
+        },
+    }
 
 
 def _serialize_event(event: EventRecord) -> dict[str, object]:

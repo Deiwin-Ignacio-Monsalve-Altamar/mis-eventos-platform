@@ -2,8 +2,8 @@
 
 import assert from 'node:assert/strict'
 import { afterEach, test } from 'node:test'
-import { getEvent, getSessionOccupancy, listEventSessions, listEvents } from '../../src/api/events.js'
-import { findMyEventRegistration, registerForEvent } from '../../src/api/registrations.js'
+import { createEvent, deleteEvent, getEvent, getEventCapacity, getMyEvent, getMyEventDashboard, getSessionOccupancy, listEventSessions, listEvents, listMyEvents, updateEvent } from '../../src/api/events.js'
+import { cancelMyEventRegistration, findMyEventRegistration, getMyRegistrationSummary, listMyRegistrations, registerForEvent } from '../../src/api/registrations.js'
 
 const originalFetch = globalThis.fetch
 
@@ -26,6 +26,25 @@ test('event listing sends real search and pagination parameters', async () => {
   assert.equal(response.pagination.page, 2)
 })
 
+test('personal event queries use authenticated owner routes and supported filters', async () => {
+  const urls = []
+  globalThis.fetch = async (url) => {
+    urls.push(url)
+    return { ok: true, status: 200, json: async () => url.includes('/summary')
+      ? { summary: { total_events: 0 } }
+      : { events: [], pagination: { page: 1, page_size: 9, total: 0, total_pages: 0 }, event: { id: 42 } } }
+  }
+
+  await listMyEvents({ page: 2, pageSize: 9, query: 'meetup', status: 'draft' })
+  assert.deepEqual(await getMyEvent(42), { id: 42 })
+  assert.deepEqual(await getMyEventDashboard(), { total_events: 0 })
+  assert.deepEqual(urls, [
+    '/api/v1/events/mine?page=2&page_size=9&q=meetup&status=draft',
+    '/api/v1/events/mine/42',
+    '/api/v1/events/mine/summary',
+  ])
+})
+
 test('event detail, sessions, and public capacity use their documented routes', async () => {
   const requestedUrls = []
   globalThis.fetch = async (url) => {
@@ -39,13 +58,79 @@ test('event detail, sessions, and public capacity use their documented routes', 
   }
 
   assert.deepEqual(await getEvent(42), { id: 42 })
+  assert.deepEqual(await getEventCapacity(42), { capacity: 20, occupied: 4, available: 16 })
   assert.deepEqual(await listEventSessions(42), [{ id: 3 }])
   assert.deepEqual(await getSessionOccupancy(42, 3), { capacity: 20, occupied: 4, available: 16 })
   assert.deepEqual(requestedUrls, [
     '/api/v1/events/42',
+    '/api/v1/events/42/capacity',
     '/api/v1/events/42/sessions',
     '/api/v1/events/42/sessions/3/capacity',
   ])
+})
+
+test('event creation posts the backend event fields to the authenticated route', async () => {
+  let requestUrl
+  let requestOptions
+  globalThis.fetch = async (url, options) => {
+    requestUrl = url
+    requestOptions = options
+    return { ok: true, status: 201, json: async () => ({ event: { id: 42, title: 'Forum' } }) }
+  }
+  const payload = {
+    title: 'Forum',
+    starts_at: '2030-01-01T10:00:00Z',
+    ends_at: '2030-01-01T12:00:00Z',
+    capacity: 25,
+    status: 'draft',
+  }
+
+  assert.deepEqual(await createEvent(payload), { id: 42, title: 'Forum' })
+  assert.equal(requestUrl, '/api/v1/events')
+  assert.equal(requestOptions.method, 'POST')
+  assert.deepEqual(JSON.parse(requestOptions.body), payload)
+  assert.equal(requestOptions.credentials, 'include')
+})
+
+test('event updates send the required version and delete uses the real endpoint', async () => {
+  const calls = []
+  globalThis.fetch = async (url, options) => {
+    calls.push({ url, options })
+    return options.method === 'PATCH'
+      ? { ok: true, status: 200, json: async () => ({ event: { id: 42, title: 'Updated', version: 2 } }) }
+      : { ok: true, status: 204, json: async () => null }
+  }
+  const updated = await updateEvent(42, { title: 'Updated', version: 1 })
+  await deleteEvent(42)
+
+  assert.deepEqual(updated, { id: 42, title: 'Updated', version: 2 })
+  assert.equal(calls[0].url, '/api/v1/events/42')
+  assert.equal(calls[0].options.method, 'PATCH')
+  assert.deepEqual(JSON.parse(calls[0].options.body), { title: 'Updated', version: 1 })
+  assert.equal(calls[1].url, '/api/v1/events/42')
+  assert.equal(calls[1].options.method, 'DELETE')
+  assert.equal(calls[1].options.credentials, 'include')
+})
+
+test('event update surfaces backend validation and concurrency errors', async () => {
+  globalThis.fetch = async () => ({
+    ok: false,
+    status: 409,
+    json: async () => ({
+      error: {
+        code: 'concurrency_conflict',
+        message: 'The event has changed.',
+        current_version: 3,
+      },
+    }),
+  })
+
+  await assert.rejects(updateEvent(42, { title: 'Stale', version: 1 }), (error) => {
+    assert.equal(error.status, 409)
+    assert.equal(error.code, 'concurrency_conflict')
+    assert.equal(error.currentVersion, 3)
+    return true
+  })
 })
 
 test('current-user registration lookup follows backend pagination and registration posts to its real endpoint', async () => {
@@ -75,4 +160,23 @@ test('current-user registration lookup follows backend pagination and registrati
   assert.equal(requestedUrls[2], '/api/v1/events/42/registrations/me')
   assert.equal(postOptions.method, 'POST')
   assert.equal(postOptions.credentials, 'include')
+})
+
+test('registration filters, summary, and cancellation use current-user endpoints', async () => {
+  const calls = []
+  globalThis.fetch = async (url, options) => {
+    calls.push({ url, method: options.method || 'GET' })
+    return { ok: true, status: options.method === 'DELETE' ? 204 : 200,
+      json: async () => options.method === 'DELETE' ? null : { registrations: [], pagination: {}, summary: { active: 0 } } }
+  }
+
+  await listMyRegistrations({ status: 'registered', period: 'upcoming' })
+  assert.deepEqual(await getMyRegistrationSummary(), { active: 0 })
+  await cancelMyEventRegistration(42)
+
+  assert.deepEqual(calls, [
+    { url: '/api/v1/registrations/me?page=1&page_size=20&status=registered&period=upcoming', method: 'GET' },
+    { url: '/api/v1/registrations/me/summary', method: 'GET' },
+    { url: '/api/v1/events/42/registrations/me', method: 'DELETE' },
+  ])
 })

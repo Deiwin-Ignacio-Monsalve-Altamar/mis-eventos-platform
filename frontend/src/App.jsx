@@ -10,7 +10,10 @@ import EventListPage from './pages/EventListPage.jsx'
 import LoginPage from './pages/LoginPage.jsx'
 import ProfilePage from './pages/ProfilePage.jsx'
 import RegisterPage from './pages/RegisterPage.jsx'
+import MyEventsPage from './pages/MyEventsPage.jsx'
+import MyRegistrationsPage from './pages/MyRegistrationsPage.jsx'
 import SiteFooter from './components/SiteFooter.jsx'
+import RequireAuthentication from './components/RequireAuthentication.jsx'
 import './App.css'
 
 /** Render the application provider, shell, and page routes. */
@@ -37,11 +40,13 @@ function ApplicationRoutes() {
         <Routes>
           <Route element={<EventListPage />} path="/" />
           <Route element={<EventListPage />} path="/events" />
-          <Route element={<CreateEventPage />} path="/events/new" />
+          <Route element={<RequireAuthentication><CreateEventPage /></RequireAuthentication>} path="/events/new" />
           <Route element={<EventDetailsPage />} path="/events/:eventId" />
           <Route element={<LoginPage />} path="/login" />
           <Route element={<RegisterPage />} path="/register" />
-          <Route element={<ProfilePage />} path="/profile" />
+          <Route element={<RequireAuthentication><ProfilePage /></RequireAuthentication>} path="/profile" />
+          <Route element={<RequireAuthentication><MyEventsPage /></RequireAuthentication>} path="/my-events" />
+          <Route element={<RequireAuthentication><MyRegistrationsPage /></RequireAuthentication>} path="/my-registrations" />
           <Route element={<NotFoundPage />} path="*" />
         </Routes>
       </main>

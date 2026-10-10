@@ -8,7 +8,7 @@ import { EmptyMessage, LoadingMessage } from './RequestFeedback.jsx'
 import { formatEventDate, getSessionAvailability, sortSessions } from '../utils/eventPresentation.js'
 
 /** Render session cards in chronological order with available backend data. */
-export default function SessionList({ eventId, sessions, status, error, onRetry }) {
+export default function SessionList({ eventId, sessions, status, error, onRetry, refreshKey = 0 }) {
   if (status === 'loading' || status === 'idle') {
     return <LoadingMessage>Cargando sesiones…</LoadingMessage>
   }
@@ -28,8 +28,8 @@ export default function SessionList({ eventId, sessions, status, error, onRetry 
 
   return (
     <ol className="session-list">
-      {sortSessions(sessions).map((session, index) => (
-        <SessionItem eventId={eventId} index={index} key={session.id} session={session} />
+        {sortSessions(sessions).map((session, index) => (
+          <SessionItem eventId={eventId} index={index} key={`${session.id}:${refreshKey}`} session={session} />
       ))}
     </ol>
   )

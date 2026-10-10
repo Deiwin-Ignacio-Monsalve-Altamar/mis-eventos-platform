@@ -151,3 +151,20 @@ def test_current_user_rejects_missing_and_invalid_tokens(auth_client):
     assert missing_response.status_code == 401
     assert invalid_response.status_code == 401
     service.get_authenticated_user.assert_called_once_with("invalid-token")
+
+
+def test_logout_expires_only_the_auth_cookie_without_auth_service_mutation(auth_client):
+    """Clear the browser cookie without invoking account or persistence actions."""
+    client, service = auth_client
+    client.set_cookie("access_token", TEST_TOKEN, path="/api/v1")
+
+    response = client.post("/api/v1/auth/logout")
+
+    assert response.status_code == 204
+    set_cookie = response.headers["Set-Cookie"]
+    assert "access_token=;" in set_cookie
+    assert "Max-Age=0" in set_cookie
+    assert "Path=/api/v1" in set_cookie
+    assert "HttpOnly" in set_cookie
+    assert "SameSite=Lax" in set_cookie
+    service.get_authenticated_user.assert_not_called()

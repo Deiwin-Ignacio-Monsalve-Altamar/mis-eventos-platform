@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.orm.exc import StaleDataError
 
 from app.core.exceptions import (
+    AuthorizationError,
     ConcurrencyConflictError,
     RelatedRecordsError,
     ValidationError,
@@ -94,6 +95,55 @@ def test_list_events_without_search_uses_unfiltered_count_and_maps_results():
     assert session.execute.call_args.args[0].whereclause is None
 
 
+def test_list_by_creator_applies_owner_status_search_and_page_predicates():
+    """Keep personal search and pagination constrained by the authenticated owner."""
+    session = Mock(spec=Session)
+    session.scalar.return_value = 2
+    session.execute.return_value.scalars.return_value.all.return_value = []
+    repository = SQLAlchemyEventRepository(session)
+
+    events, total = repository.list_by_creator(99, 2, 5, "meetup", "published")
+
+    statement = session.execute.call_args.args[0]
+    compiled = statement.compile()
+    assert events == []
+    assert total == 2
+    assert "events.created_by_id" in str(compiled)
+    assert "events.status" in str(compiled)
+    assert 99 in compiled.params.values()
+    assert "meetup" in compiled.params.values()
+    assert "published" in compiled.params.values()
+    assert statement._offset_clause.value == 5
+    assert statement._limit_clause.value == 5
+
+
+def test_dashboard_counts_query_uses_creator_filter_and_lifecycle_dates():
+    """Compute dashboard counts in one owner-scoped aggregate statement."""
+    session = Mock(spec=Session)
+    session.execute.return_value.one.return_value._mapping = {
+        "total": 2,
+        "draft": 1,
+        "published": 0,
+        "cancelled": 1,
+        "completed": 0,
+        "upcoming": 1,
+        "active": 0,
+        "finished": 0,
+    }
+    repository = SQLAlchemyEventRepository(session)
+    now = datetime(2030, 1, 1, tzinfo=UTC)
+
+    result = repository.dashboard_counts(99, now)
+
+    statement = session.execute.call_args.args[0]
+    assert result["total"] == 2
+    assert result["cancelled"] == 1
+    assert "events.created_by_id" in str(statement.compile())
+    assert "events.starts_at" in str(statement.compile())
+    assert "events.ends_at" in str(statement.compile())
+    assert 99 in statement.compile().params.values()
+
+
 def test_update_rolls_back_and_reports_latest_version_on_orm_conflict():
     """Roll back a stale ORM write and expose the latest version to the caller."""
     model = SimpleNamespace(
@@ -126,7 +176,7 @@ def test_update_rolls_back_and_reports_latest_version_on_orm_conflict():
     )
 
     with pytest.raises(ConcurrencyConflictError) as error:
-        repository.save(event, expected_version=2)
+        repository.save(event, expected_version=2, owner_id=8)
 
     assert error.value.current_version == 3
     session.rollback.assert_called_once()
@@ -174,9 +224,9 @@ def test_same_initial_event_version_allows_only_first_update():
         version=1,
     )
 
-    saved = repository.save(first, expected_version=1)
+    saved = repository.save(first, expected_version=1, owner_id=8)
     with pytest.raises(ConcurrencyConflictError) as error:
-        repository.save(second, expected_version=1)
+        repository.save(second, expected_version=1, owner_id=8)
 
     assert saved.version == 2
     assert error.value.current_version == 2
@@ -211,7 +261,7 @@ def test_event_capacity_cannot_drop_below_active_event_registrations():
     )
 
     with pytest.raises(ValidationError, match="active event registrations"):
-        repository.save(event, expected_version=1)
+        repository.save(event, expected_version=1, owner_id=8)
 
     lock_statement = session.scalar.call_args_list[0].args[0]
     assert "FOR UPDATE" in str(lock_statement.compile())
@@ -248,7 +298,7 @@ def test_event_schedule_cannot_exclude_an_existing_session():
     )
 
     with pytest.raises(ValidationError, match="cannot exclude an existing session"):
-        repository.save(event, expected_version=1)
+        repository.save(event, expected_version=1, owner_id=8)
 
     schedule_statement = session.scalar.call_args_list[2].args[0]
     sql = str(schedule_statement.compile())
@@ -263,6 +313,7 @@ def test_delete_locks_event_before_checking_related_registrations():
     """Serialize event deletion against registration and session writes."""
     model = SimpleNamespace(
         id=5,
+        created_by_id=8,
         registrations=[object()],
         sessions=[],
         speakers=[],
@@ -272,7 +323,7 @@ def test_delete_locks_event_before_checking_related_registrations():
     repository = SQLAlchemyEventRepository(session)
 
     with pytest.raises(RelatedRecordsError):
-        repository.delete(5)
+        repository.delete(5, owner_id=8)
 
     statement = session.scalar.call_args.args[0]
     sql = str(statement.compile())
@@ -281,3 +332,58 @@ def test_delete_locks_event_before_checking_related_registrations():
     session.delete.assert_not_called()
     session.commit.assert_not_called()
     session.rollback.assert_called_once()
+
+
+def test_update_rolls_back_when_locked_event_belongs_to_another_user():
+    """Recheck ownership under the event row lock before any update queries."""
+    model = SimpleNamespace(id=5, created_by_id=8)
+    session = Mock(spec=Session)
+    session.scalar.return_value = model
+    repository = SQLAlchemyEventRepository(session)
+    event = EventRecord(
+        id=5,
+        title="Attempt",
+        starts_at=datetime(2030, 1, 1, 10, tzinfo=UTC),
+        ends_at=datetime(2030, 1, 1, 11, tzinfo=UTC),
+        capacity=20,
+        status="draft",
+        created_by_id=8,
+        version=1,
+    )
+
+    with pytest.raises(AuthorizationError):
+        repository.save(event, expected_version=1, owner_id=99)
+
+    session.rollback.assert_called_once()
+    session.commit.assert_not_called()
+    session.add.assert_not_called()
+
+
+def test_delete_rolls_back_when_locked_event_belongs_to_another_user():
+    """Verify ownership under the deletion lock before inspecting dependencies."""
+    model = SimpleNamespace(
+        id=5, created_by_id=8, registrations=[], sessions=[], speakers=[]
+    )
+    session = Mock(spec=Session)
+    session.scalar.return_value = model
+    repository = SQLAlchemyEventRepository(session)
+
+    with pytest.raises(AuthorizationError):
+        repository.delete(5, owner_id=99)
+
+    session.rollback.assert_called_once()
+    session.delete.assert_not_called()
+    session.commit.assert_not_called()
+
+
+def test_owner_event_query_always_filters_by_creator():
+    """Build a parameterized owner predicate for personal event lookups."""
+    session = Mock(spec=Session)
+    session.scalar.return_value = None
+    repository = SQLAlchemyEventRepository(session)
+
+    assert repository.find_by_id_for_creator(5, 99) is None
+
+    statement = session.scalar.call_args.args[0]
+    assert "events.created_by_id" in str(statement.compile())
+    assert set(statement.compile().params.values()) == {5, 99}

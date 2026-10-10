@@ -130,6 +130,20 @@ def test_register_rejects_full_event_without_committing():
     session.rollback.assert_called_once()
 
 
+def test_cancelled_registrations_are_excluded_from_event_occupancy():
+    """Count only registered rows so cancellation releases its event seat."""
+    session = Mock()
+    session.scalar.return_value = 0
+    repository = make_repository(session)
+
+    assert repository._active_registration_count(7) == 0
+
+    statement = session.scalar.call_args.args[0].compile(dialect=postgresql.dialect())
+    assert "registrations.status" in str(statement)
+    assert "registered" in statement.params.values()
+    assert statement.params["event_id_1"] == 7
+
+
 def test_reactivation_rechecks_event_capacity_before_changing_status():
     """Keep a cancelled registration unchanged when the event filled meanwhile."""
     event = make_event(capacity=1)
@@ -497,3 +511,61 @@ def test_list_by_user_returns_empty_results_without_mutating_persistence():
     session.add.assert_not_called()
     session.commit.assert_not_called()
     session.rollback.assert_not_called()
+
+
+def test_registration_activity_summary_is_scoped_and_uses_event_dates():
+    """Aggregate one account's registration states and time-based attendance groups."""
+    session = Mock()
+    session.execute.return_value.one.return_value._mapping = {
+        "total": 4,
+        "active": 2,
+        "upcoming": 1,
+        "past": 1,
+        "cancelled": 2,
+    }
+    repository = make_repository(session)
+    now = datetime(2030, 1, 1, tzinfo=UTC)
+
+    summary = repository.summary_by_user(22, now)
+
+    statement = session.execute.call_args.args[0]
+    sql = str(statement.compile(dialect=postgresql.dialect()))
+    assert summary == {
+        "total": 4,
+        "active": 2,
+        "upcoming": 1,
+        "past": 1,
+        "cancelled": 2,
+    }
+    assert "registrations.user_id" in sql
+    assert "events.starts_at" in sql
+    assert "events.ends_at" in sql
+    assert 22 in statement.compile().params.values()
+
+
+def test_registration_period_filter_keeps_only_owner_and_requested_period():
+    """Apply active upcoming-period criteria in SQL rather than filtering one page."""
+    session = Mock()
+    session.scalar.return_value = 0
+    session.execute.return_value.all.return_value = []
+    repository = make_repository(session)
+    now = datetime(2030, 1, 1, tzinfo=UTC)
+
+    registrations, total = repository.list_by_user(
+        22, page=1, page_size=20, status="registered", period="upcoming", now=now
+    )
+
+    count_statement = session.scalar.call_args.args[0]
+    list_statement = session.execute.call_args.args[0]
+    assert registrations == []
+    assert total == 0
+    assert "registrations.user_id" in str(
+        count_statement.compile(dialect=postgresql.dialect())
+    )
+    assert "events.starts_at" in str(
+        count_statement.compile(dialect=postgresql.dialect())
+    )
+    assert "registrations.status" in str(
+        list_statement.compile(dialect=postgresql.dialect())
+    )
+    assert 22 in count_statement.compile().params.values()

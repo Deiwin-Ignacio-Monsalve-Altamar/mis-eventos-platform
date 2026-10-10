@@ -167,7 +167,7 @@ def test_related_record_delete_conflict_flows_through_route_and_service(
     assert login_response.status_code == 200
     assert response.status_code == 409
     assert response.json["error"]["code"] == "related_records"
-    event_repository.delete.assert_called_once_with(EVENT.id)
+    event_repository.delete.assert_called_once_with(EVENT.id, 7)
 
 
 def test_concurrent_session_enrollments_return_one_success_and_one_capacity_conflict(
@@ -276,7 +276,9 @@ def test_registration_api_creates_and_lists_only_current_users_records(monkeypat
     ]
     assert all(item["event"]["id"] == EVENT.id for item in listed.json["registrations"])
     repository.register.assert_called_once_with(12, 22)
-    repository.list_by_user.assert_called_once_with(22, 1, 20)
+    call = repository.list_by_user.call_args
+    assert call.args[:5] == (22, 1, 20, None, None)
+    assert call.args[5].tzinfo is not None
 
 
 def test_concurrent_event_registrations_return_one_success_and_one_capacity_conflict(

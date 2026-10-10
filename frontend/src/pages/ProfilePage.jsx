@@ -1,19 +1,35 @@
 /** Show the current profile loaded from the authenticated API endpoint. */
 
-import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
-import { listMyRegistrations } from '../api/registrations.js'
+import { useEffect, useRef, useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
+import { getMyEventDashboard, listMyEvents } from '../api/events.js'
+import { cancelMyEventRegistration, getMyRegistrationSummary, listMyRegistrations } from '../api/registrations.js'
 import AuthErrorMessage from '../components/AuthErrorMessage.jsx'
-import { EmptyMessage, LoadingMessage } from '../components/RequestFeedback.jsx'
+import EventArtwork from '../components/EventArtwork.jsx'
+import { EmptyMessage, ErrorMessage, LoadingMessage } from '../components/RequestFeedback.jsx'
 import useAppState from '../state/useAppState.js'
+import { getEventStatusLabel } from '../utils/eventPresentation.js'
 
 /** Render the user's public identity and API-backed event registrations. */
 export default function ProfilePage() {
-  const { state } = useAppState()
+  const { state, signOut } = useAppState()
+  const navigate = useNavigate()
   const { auth } = state
   const [registrationQuery, setRegistrationQuery] = useState(null)
   const [page, setPage] = useState(1)
   const [refresh, setRefresh] = useState(0)
+  const [activityResponse, setActivityResponse] = useState(null)
+  const [activityRetry, setActivityRetry] = useState(0)
+  const [logoutBusy, setLogoutBusy] = useState(false)
+  const [logoutError, setLogoutError] = useState(null)
+  const [registrationBusyId, setRegistrationBusyId] = useState(null)
+  const [registrationActionError, setRegistrationActionError] = useState(null)
+  const [registrationActionNotice, setRegistrationActionNotice] = useState('')
+  const logoutRequest = useRef(false)
+  const cancellationRequest = useRef(false)
+  const activityKey = `${auth.user?.id ?? 'anonymous'}:${activityRetry}`
+  const activity = activityResponse?.key === activityKey ? activityResponse.data : null
+  const activityError = activityResponse?.key === activityKey ? activityResponse.error : null
   const queryKey = `${auth.user?.id ?? 'anonymous'}:${page}:${refresh}`
   const registrations = registrationQuery?.key === queryKey ? registrationQuery.data : null
   const registrationError = registrationQuery?.key === queryKey ? registrationQuery.error : null
@@ -32,6 +48,61 @@ export default function ProfilePage() {
       active = false
     }
   }, [auth.status, page, queryKey])
+
+  useEffect(() => {
+    if (auth.status !== 'authenticated') return undefined
+    let active = true
+    Promise.all([
+      getMyEventDashboard(),
+      getMyRegistrationSummary(),
+      listMyEvents({ page: 1, pageSize: 3 }),
+    ]).then(([created, attending, ownEvents]) => {
+      if (active) setActivityResponse({
+        key: activityKey,
+        data: { created, attending, ownEvents: ownEvents.events },
+        error: null,
+      })
+    }).catch((error) => {
+      if (active) setActivityResponse({ key: activityKey, data: null, error })
+    })
+    return () => { active = false }
+  }, [auth.status, auth.user?.id, activityRetry, activityKey])
+
+  async function handleLogout() {
+    if (logoutRequest.current) return
+    logoutRequest.current = true
+    setLogoutBusy(true)
+    setLogoutError(null)
+    try {
+      await signOut()
+      navigate('/login', { replace: true })
+    } catch (error) {
+      setLogoutError(error)
+    } finally {
+      logoutRequest.current = false
+      setLogoutBusy(false)
+    }
+  }
+
+  async function handleCancelRegistration(registration) {
+    if (cancellationRequest.current || registration.status !== 'registered') return
+    if (!window.confirm(`¿Cancelar tu inscripción a “${registration.event.title}”? La plaza podría quedar disponible para otra persona.`)) return
+    cancellationRequest.current = true
+    setRegistrationBusyId(registration.event.id)
+    setRegistrationActionError(null)
+    setRegistrationActionNotice('')
+    try {
+      await cancelMyEventRegistration(registration.event.id)
+      setRegistrationActionNotice('Tu inscripción quedó cancelada.')
+      setRefresh((current) => current + 1)
+      setActivityRetry((current) => current + 1)
+    } catch (error) {
+      setRegistrationActionError(error)
+    } finally {
+      cancellationRequest.current = false
+      setRegistrationBusyId(null)
+    }
+  }
 
   if (auth.status === 'loading') {
     return <LoadingMessage>Estamos cargando tu perfil…</LoadingMessage>
@@ -68,15 +139,73 @@ export default function ProfilePage() {
           <p className="eyebrow">Tu cuenta</p>
           <h1>Te damos la bienvenida, {auth.user.first_name}</h1>
           <p>{auth.user.email}</p>
+          <button className="button button-secondary" disabled={logoutBusy} onClick={handleLogout} type="button">
+            {logoutBusy ? 'Cerrando sesión…' : 'Cerrar sesión'}
+          </button>
         </div>
         <p className="profile-welcome-note">Los buenos momentos empiezan cuando hacemos espacio para encontrarnos.</p>
       </header>
+      {logoutError && <ErrorMessage error={logoutError} />}
+
+      <section aria-labelledby="activity-heading" className="profile-activity">
+        <div className="profile-section-heading">
+          <div><p className="eyebrow">Tu actividad</p><h2 id="activity-heading">Crear y asistir</h2></div>
+          <div className="button-row">
+            <Link className="button button-primary" to="/events/new">Crear evento</Link>
+            <Link className="button button-secondary" to="/my-events">Mis eventos</Link>
+            <Link className="button button-secondary" to="/my-registrations">Mis inscripciones</Link>
+          </div>
+        </div>
+
+        {registrationActionNotice && <p className="feedback feedback-success" role="status">{registrationActionNotice}</p>}
+        {registrationActionError && <ErrorMessage error={registrationActionError} />}
+        {!activity && !activityError && <LoadingMessage>Cargando el resumen de tu actividad…</LoadingMessage>}
+        {activityError && <div><ErrorMessage error={activityError} /><button className="button button-secondary" onClick={() => setActivityRetry((value) => value + 1)} type="button">Intentar de nuevo</button></div>}
+        {activity && <>
+          <h3 className="activity-group-heading">Eventos que has creado</h3>
+          <dl aria-label="Estadísticas de eventos creados" className="activity-metrics">
+            <Metric label="Total creados" value={activity.created.total_events} />
+            <Metric label="Próximos" value={activity.created.upcoming_events} />
+            <Metric label="En curso" value={activity.created.active_events} />
+            <Metric label="Finalizados" value={activity.created.finished_events} />
+            <Metric label="Cancelados" value={activity.created.cancelled_events} />
+          </dl>
+          <div aria-label="Porcentaje de eventos por estado" className="event-status-chart">
+            {Object.entries(activity.created.status_counts).map(([status, count]) => (
+              <div className="event-status-chart-row" key={status}>
+                <span>{getEventStatusLabel(status)}</span>
+                <div aria-label={`${getEventStatusLabel(status)}: ${activity.created.status_percentages[status]} por ciento`} aria-valuemax="100" aria-valuemin="0" aria-valuenow={activity.created.status_percentages[status]} className="event-status-track" role="progressbar">
+                  <span style={{ width: `${activity.created.status_percentages[status]}%` }} />
+                </div>
+                <strong>{count}</strong>
+              </div>
+            ))}
+            <p>Porcentajes calculados sobre {activity.created.total_events} eventos creados.</p>
+          </div>
+          {activity.ownEvents.length === 0
+            ? <div className="profile-empty-state"><EmptyMessage>Aún no has creado eventos.</EmptyMessage><Link className="button button-primary" to="/events/new">Crear tu primer evento</Link></div>
+            : <div className="profile-owned-events">{activity.ownEvents.map((event) => <article className="profile-owned-event" key={event.id}>
+              <EventArtwork title={event.title} />
+              <div><span className={`status-badge status-${event.status}`}>{getEventStatusLabel(event.status)}</span><h4><Link to={`/events/${event.id}`}>{event.title}</Link></h4></div>
+              <Link className="text-link" to={`/events/${event.id}?edit=1`}>Gestionar</Link>
+            </article>)}</div>}
+          <h3 className="activity-group-heading">Eventos a los que te has inscrito</h3>
+          <dl aria-label="Estadísticas de inscripciones" className="activity-metrics registration-metrics">
+            <Metric label="Inscripciones" value={activity.attending.total} />
+            <Metric label="Activas" value={activity.attending.active} />
+            <Metric label="Próximas" value={activity.attending.upcoming} />
+            <Metric label="Eventos pasados" value={activity.attending.past} />
+            <Metric label="Canceladas" value={activity.attending.cancelled} />
+          </dl>
+          <p className="attendance-note">Los eventos pasados reflejan una inscripción confirmada; no acreditan asistencia presencial.</p>
+        </>}
+      </section>
 
       <section aria-labelledby="registrations-heading" className="profile-registrations">
         <div className="profile-section-heading">
           <div>
             <p className="eyebrow">Tu vida de eventos</p>
-            <h2 id="registrations-heading">Mis inscripciones</h2>
+            <h2 id="registrations-heading">Inscripciones recientes</h2>
           </div>
           {registrations && <p className="registration-count">{registrations.pagination.total} en total</p>}
         </div>
@@ -110,10 +239,16 @@ export default function ProfilePage() {
                       {registration.event.title}
                     </Link>
                     <p>{registration.event.location}</p>
+                    <span className={`status-badge status-${registration.event.status}`}>{getEventStatusLabel(registration.event.status)}</span>
                   </div>
                   <span className={`registration-status status-${registration.status}`}>
                     {registration.status === 'registered' ? 'Inscrito' : 'Cancelada'}
                   </span>
+                  {registration.status === 'registered' && (
+                    <button className="button button-secondary" disabled={registrationBusyId === registration.event.id} onClick={() => handleCancelRegistration(registration)} type="button">
+                      {registrationBusyId === registration.event.id ? 'Cancelando…' : 'Cancelar inscripción'}
+                    </button>
+                  )}
                 </li>
               ))}
             </ul>
@@ -124,11 +259,17 @@ export default function ProfilePage() {
                 <button className="button button-secondary" disabled={page >= registrations.pagination.total_pages} onClick={() => setPage((currentPage) => currentPage + 1)} type="button">Siguiente</button>
               </nav>
             )}
+            <p className="form-footnote"><Link to="/my-registrations">Ver y filtrar todas mis inscripciones</Link></p>
           </>
         )}
       </section>
     </div>
   )
+}
+
+/** Render one concise organizer or attendance metric. */
+function Metric({ label, value }) {
+  return <div><dt>{label}</dt><dd>{value}</dd></div>
 }
 
 /** Return initials for the profile avatar using the authenticated public name. */

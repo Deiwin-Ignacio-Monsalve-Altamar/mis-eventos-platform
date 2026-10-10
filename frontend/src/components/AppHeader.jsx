@@ -16,6 +16,7 @@ export default function AppHeader({ auth }) {
       <nav aria-label="Navegación principal" className="main-navigation">
         <NavLink className={pathname === '/' ? 'active' : undefined} end to="/events">Eventos</NavLink>
         <NavLink to="/events/new">Crear evento</NavLink>
+        {isAuthenticated && <NavLink to="/my-events">Mis eventos</NavLink>}
       </nav>
       <div className="header-actions">
         {isAuthenticated ? (

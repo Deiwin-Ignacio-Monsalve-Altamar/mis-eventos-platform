@@ -13,6 +13,7 @@ from app.application.dto.event_page import EventPage
 from app.application.dto.event_registration_page import EventRegistrationPage
 from app.core.exceptions import (
     AuthenticationError,
+    AuthorizationError,
     ConcurrencyConflictError,
     DuplicateRegistrationError,
     EventCapacityExceededError,
@@ -60,10 +61,33 @@ def event_client(monkeypatch):
     event_service.list_events.return_value = EventPage(
         events=(EVENT,), page=1, page_size=20, total=1
     )
+    event_service.list_my_events.return_value = EventPage(
+        events=(EVENT,), page=1, page_size=20, total=1
+    )
+    event_service.get_my_event.return_value = EVENT
+    event_service.dashboard.return_value = {
+        "total_events": 1,
+        "upcoming_events": 1,
+        "active_events": 0,
+        "finished_events": 0,
+        "cancelled_events": 0,
+        "status_counts": {"draft": 1, "published": 0, "cancelled": 0, "completed": 0},
+        "status_percentages": {
+            "draft": 100.0,
+            "published": 0.0,
+            "cancelled": 0.0,
+            "completed": 0.0,
+        },
+    }
     registration_service = Mock()
     registration_service.register.return_value = EventRegistrationRecord(
         31, EVENT.id, ACCOUNT.id, "registered"
     )
+    registration_service.capacity_for_event.return_value = {
+        "capacity": 100,
+        "occupied": 2,
+        "available": 98,
+    }
     event_service.registration_service = registration_service
     auth_service = Mock()
     auth_service.get_authenticated_user.return_value = ACCOUNT
@@ -119,7 +143,6 @@ def test_create_event_rejects_non_object_json_without_calling_service(event_clie
     """Return 400 for a non-object body before calling the event service."""
     client, event_service, _ = event_client
     add_valid_access_cookie(client)
-
     response = client.post("/api/v1/events", json=["invalid"])
 
     assert response.status_code == 400
@@ -217,7 +240,28 @@ def test_update_event_calls_service_and_returns_event(event_client):
 
     assert response.status_code == 200
     assert response.json["event"]["title"] == EVENT.title
-    event_service.update.assert_called_once_with(12, {"title": "Revised Event"}, 1)
+    event_service.update.assert_called_once_with(
+        12, {"title": "Revised Event"}, 1, creator_id=ACCOUNT.id
+    )
+
+
+def test_update_event_rejects_non_owner_with_forbidden(event_client):
+    """Return 403 when the event service denies an authenticated non-owner."""
+    client, event_service, _ = event_client
+    add_valid_access_cookie(client)
+    event_service.update.side_effect = AuthorizationError(
+        "Only the event creator can edit this event."
+    )
+
+    response = client.patch(
+        "/api/v1/events/12", json={"title": "Attempt", "version": 1}
+    )
+
+    assert response.status_code == 403
+    assert response.json["error"]["code"] == "forbidden"
+    event_service.update.assert_called_once_with(
+        12, {"title": "Attempt"}, 1, creator_id=ACCOUNT.id
+    )
 
 
 def test_update_event_returns_conflict_with_current_version(event_client):
@@ -276,6 +320,30 @@ def test_event_registration_endpoints_use_authenticated_user(event_client):
     event_service.registration_service.cancel.assert_called_once_with(
         EVENT.id, ACCOUNT.id
     )
+
+
+def test_public_event_capacity_uses_active_registration_counts(event_client):
+    """Expose seat availability publicly without requiring an attendee session."""
+    client, event_service, _ = event_client
+
+    response = client.get("/api/v1/events/12/capacity")
+
+    assert response.status_code == 200
+    assert response.json == {"capacity": 100, "occupied": 2, "available": 98}
+    event_service.registration_service.capacity_for_event.assert_called_once_with(12)
+
+
+def test_public_event_capacity_returns_not_found_for_missing_event(event_client):
+    """Keep unknown event identifiers on the established 404 contract."""
+    client, event_service, _ = event_client
+    event_service.registration_service.capacity_for_event.side_effect = NotFoundError(
+        "Event not found."
+    )
+
+    response = client.get("/api/v1/events/999/capacity")
+
+    assert response.status_code == 404
+    assert response.json["error"]["code"] == "not_found"
 
 
 @pytest.mark.parametrize("method", ["post", "delete"])
@@ -369,7 +437,7 @@ def test_list_my_registrations_returns_owned_active_and_cancelled_events(event_c
         "total_pages": 1,
     }
     registration_service.list_for_user.assert_called_once_with(
-        ACCOUNT.id, page=None, page_size=None
+        ACCOUNT.id, page=None, page_size=None, status=None, period=None
     )
     registration_service.register.assert_not_called()
     registration_service.cancel.assert_not_called()
@@ -426,6 +494,49 @@ def test_list_my_registrations_validates_pagination(event_client):
 
     assert response.status_code == 400
     assert response.json["error"]["code"] == "validation_error"
+
+
+def test_list_my_registrations_forwards_real_status_and_period_filters(event_client):
+    """Apply registration filters while retaining token-derived user isolation."""
+    client, event_service, _ = event_client
+    add_valid_access_cookie(client)
+    event_service.registration_service.list_for_user.return_value = (
+        EventRegistrationPage(registrations=(), page=1, page_size=20, total=0)
+    )
+
+    response = client.get("/api/v1/registrations/me?status=registered&period=upcoming")
+
+    assert response.status_code == 200
+    event_service.registration_service.list_for_user.assert_called_once_with(
+        ACCOUNT.id, page=None, page_size=None, status="registered", period="upcoming"
+    )
+
+
+def test_registration_summary_uses_authenticated_account_and_requires_login(
+    event_client,
+):
+    """Return registration metrics for only the authenticated account."""
+    client, event_service, auth_service = event_client
+    response = client.get("/api/v1/registrations/me/summary")
+    assert response.status_code == 401
+    event_service.registration_service.summary_for_user.assert_not_called()
+    auth_service.get_authenticated_user.assert_not_called()
+
+    add_valid_access_cookie(client)
+    event_service.registration_service.summary_for_user.return_value = {
+        "total": 0,
+        "active": 0,
+        "upcoming": 0,
+        "past": 0,
+        "cancelled": 0,
+    }
+    response = client.get("/api/v1/registrations/me/summary")
+
+    assert response.status_code == 200
+    assert response.json["summary"]["total"] == 0
+    event_service.registration_service.summary_for_user.assert_called_once_with(
+        ACCOUNT.id
+    )
 
 
 def test_event_list_maps_page_and_search_results(event_client):
@@ -490,6 +601,79 @@ def test_get_event_maps_missing_event_to_not_found(event_client):
     }
 
 
+def test_list_my_events_uses_authenticated_identity_and_supports_filters(event_client):
+    """Return only the authenticated creator's paginated event result contract."""
+    client, event_service, _ = event_client
+    add_valid_access_cookie(client)
+    event_service.list_my_events.return_value = EventPage(
+        events=(EVENT,), page=2, page_size=3, total=7
+    )
+
+    response = client.get(
+        "/api/v1/events/mine?page=2&page_size=3&q=conference&status=draft"
+    )
+
+    assert response.status_code == 200
+    assert response.json["events"][0]["id"] == EVENT.id
+    assert response.json["pagination"] == {
+        "page": 2,
+        "page_size": 3,
+        "total": 7,
+        "total_pages": 3,
+    }
+    assert "created_by_id" not in response.json["events"][0]
+    event_service.list_my_events.assert_called_once_with(
+        ACCOUNT.id, "2", "3", "conference", "draft"
+    )
+
+
+def test_list_my_events_rejects_owner_id_supplied_by_client(event_client):
+    """Never let query parameters override the identity resolved from the cookie."""
+    client, event_service, _ = event_client
+    add_valid_access_cookie(client)
+
+    response = client.get("/api/v1/events/mine?creator_id=999")
+
+    assert response.status_code == 400
+    assert response.json["error"]["code"] == "invalid_request"
+    event_service.list_my_events.assert_not_called()
+
+
+def test_list_my_events_requires_authentication(event_client):
+    """Do not query owner-scoped records before authenticating the request."""
+    client, event_service, auth_service = event_client
+
+    response = client.get("/api/v1/events/mine")
+
+    assert response.status_code == 401
+    event_service.list_my_events.assert_not_called()
+    auth_service.get_authenticated_user.assert_not_called()
+
+
+def test_my_event_dashboard_uses_authenticated_identity(event_client):
+    """Scope event summary metrics to the user supplied by token validation."""
+    client, event_service, _ = event_client
+    add_valid_access_cookie(client)
+
+    response = client.get("/api/v1/events/mine/summary")
+
+    assert response.status_code == 200
+    assert response.json["summary"]["total_events"] == 1
+    event_service.dashboard.assert_called_once_with(ACCOUNT.id)
+
+
+def test_get_my_event_returns_not_found_for_non_owned_event(event_client):
+    """Avoid exposing whether an unowned event exists on the management route."""
+    client, event_service, _ = event_client
+    add_valid_access_cookie(client)
+    event_service.get_my_event.side_effect = NotFoundError("Event not found.")
+
+    response = client.get("/api/v1/events/mine/12")
+
+    assert response.status_code == 404
+    event_service.get_my_event.assert_called_once_with(12, ACCOUNT.id)
+
+
 def test_event_deletion_requires_authentication(event_client):
     """Reject deletion without a token before calling either application service."""
     client, event_service, auth_service = event_client
@@ -532,7 +716,22 @@ def test_event_deletion_returns_no_content(event_client):
 
     assert response.status_code == 204
     assert response.data == b""
-    event_service.delete.assert_called_once_with(12)
+    event_service.delete.assert_called_once_with(12, creator_id=ACCOUNT.id)
+
+
+def test_event_deletion_rejects_non_owner_with_forbidden(event_client):
+    """Return 403 when the authenticated account does not own the event."""
+    client, event_service, _ = event_client
+    add_valid_access_cookie(client)
+    event_service.delete.side_effect = AuthorizationError(
+        "Only the event creator can delete this event."
+    )
+
+    response = client.delete("/api/v1/events/12")
+
+    assert response.status_code == 403
+    assert response.json["error"]["code"] == "forbidden"
+    event_service.delete.assert_called_once_with(12, creator_id=ACCOUNT.id)
 
 
 def test_event_deletion_maps_related_record_conflict(event_client):

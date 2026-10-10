@@ -4,6 +4,7 @@ const ERROR_MESSAGES = {
   authentication_required: 'Inicia sesión para continuar.',
   authentication_unavailable: 'La autenticación no está disponible en este momento.',
   concurrency_conflict: 'El evento cambió mientras lo editabas. Actualiza la página e inténtalo de nuevo.',
+  forbidden: 'No tienes permiso para gestionar este evento.',
   invalid_request: 'La solicitud no tiene un formato válido. Revisa los datos e inténtalo de nuevo.',
   network_error: 'No pudimos conectar con el servidor. Revisa tu conexión e inténtalo de nuevo.',
   not_found: 'No encontramos el recurso solicitado.',
