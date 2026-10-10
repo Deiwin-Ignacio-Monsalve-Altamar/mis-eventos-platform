@@ -7,9 +7,9 @@ import uuid
 from flask import Flask, g, jsonify, request
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
-from werkzeug.exceptions import HTTPException
 
 from app.api.auth.routes import auth_bp
+from app.api.error_handlers import register_error_handlers
 from app.api.events.routes import event_bp
 from app.api.health.routes import health_bp
 from app.api.sessions.routes import session_bp
@@ -86,7 +86,7 @@ def create_app() -> Flask:
 
     _register_observability_routes(app)
     _register_http_instrumentation(app)
-    _register_unexpected_error_handler(app)
+    register_error_handlers(app)
     logger.info(
         "Backend application initialized; database readiness is checked at /api/v1/ready.",
         extra={"stage": "application_ready", **_log_context(app)},
@@ -207,31 +207,3 @@ def _register_http_instrumentation(app: Flask) -> None:
 def _normalized_route() -> str:
     """Return the Flask route template without exposing raw path identifiers."""
     return request.url_rule.rule if request.url_rule else "unmatched"
-
-
-def _register_unexpected_error_handler(app: Flask) -> None:
-    """Log unexpected failures once and return a safe standard API error."""
-
-    @app.errorhandler(Exception)
-    def handle_unexpected_error(error):
-        """Log unexpected failures once and return a credential-safe response."""
-        if isinstance(error, HTTPException):
-            return error
-        get_logger("http").exception(
-            "Unhandled request exception.",
-            extra={
-                **_log_context(app),
-                "request_id": getattr(g, "request_id", None),
-                "method": request.method,
-                "route": _normalized_route(),
-                "stage": "request_handler",
-            },
-        )
-        return jsonify(
-            {
-                "error": {
-                    "code": "internal_error",
-                    "message": "An unexpected error occurred.",
-                }
-            }
-        ), 500
