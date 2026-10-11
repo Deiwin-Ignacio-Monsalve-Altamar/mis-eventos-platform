@@ -19,3 +19,11 @@ class UserRepository(Protocol):
     def add(self, account: UserAccount) -> UserAccount:
         """Persist a new account and return its database identity."""
         ...
+
+    def promote_attendee_to_organizer(self, user_id: int) -> UserAccount:
+        """Promote an attendee or return an existing organizer unchanged."""
+        ...
+
+    def bootstrap_first_admin(self, email: str) -> UserAccount:
+        """Initialize the first administrator if none exists."""
+        ...

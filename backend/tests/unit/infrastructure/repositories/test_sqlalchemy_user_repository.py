@@ -4,10 +4,17 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
+from sqlalchemy import create_engine
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
 
-from app.core.exceptions import DuplicateAccountError
+from app.core.exceptions import (
+    DuplicateAccountError,
+    NotFoundError,
+    RoleConflictError,
+)
 from app.domain.entities.user_account import UserAccount
+from app.domain.entities.user_role import UserRole
 from app.infrastructure.database.models import User
 from app.infrastructure.repositories.sqlalchemy_user_repository import (
     SQLAlchemyUserRepository,
@@ -22,6 +29,7 @@ def make_user(user_id: int = 17) -> User:
         password_hash="encoded-password",
         first_name="Ada",
         last_name="Lovelace",
+        role=UserRole.ATTENDEE.value,
     )
 
 
@@ -33,6 +41,7 @@ def make_account() -> UserAccount:
         password_hash="encoded-password",
         first_name="Ada",
         last_name="Lovelace",
+        role=UserRole.ATTENDEE,
     )
 
 
@@ -193,3 +202,39 @@ def test_to_account_maps_every_user_model_identity_field():
         first_name="Ada",
         last_name="Lovelace",
     )
+
+
+def test_role_transitions_promote_attendees_idempotently_and_reject_admins():
+    """Persist attendee promotion once, preserve organizers, and reject admin targets."""
+    engine = create_engine("sqlite://")
+    User.metadata.create_all(engine)
+    with Session(engine) as session:
+        attendee = User(
+            email="attendee@example.test",
+            password_hash="unused-test-value",
+            first_name="Ada",
+            last_name="Lovelace",
+            role=UserRole.ATTENDEE.value,
+        )
+        admin = User(
+            email="admin@example.test",
+            password_hash="unused-test-value",
+            first_name="Grace",
+            last_name="Hopper",
+            role=UserRole.ADMIN.value,
+        )
+        session.add_all([attendee, admin])
+        session.commit()
+        attendee_id, admin_id = attendee.id, admin.id
+        repository = SQLAlchemyUserRepository(session)
+
+        promoted = repository.promote_attendee_to_organizer(attendee_id)
+        repeated = repository.promote_attendee_to_organizer(attendee_id)
+
+        assert promoted.role is UserRole.ORGANIZER
+        assert repeated.role is UserRole.ORGANIZER
+        with pytest.raises(RoleConflictError):
+            repository.promote_attendee_to_organizer(admin_id)
+        with pytest.raises(NotFoundError):
+            repository.promote_attendee_to_organizer(999)
+    engine.dispose()

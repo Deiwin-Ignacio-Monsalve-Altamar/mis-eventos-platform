@@ -15,12 +15,16 @@ class SessionAttendeeService:
         self._repository = repository
 
     def list_attendees(
-        self, event_id: int, session_id: int, requester_id: int
+        self,
+        event_id: int,
+        session_id: int,
+        requester_id: int,
+        is_admin: bool = False,
     ) -> list[SessionAttendee]:
-        """Allow only the event creator to view the session attendee roster."""
+        """Allow the event creator or an explicit administrator to view the roster."""
         creator_id = self._event_creator(event_id)
         self._require_session(event_id, session_id)
-        if creator_id != requester_id:
+        if creator_id != requester_id and not is_admin:
             raise AuthorizationError(
                 "Only the event creator can view session attendees."
             )

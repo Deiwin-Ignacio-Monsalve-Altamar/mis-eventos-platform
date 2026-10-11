@@ -1,5 +1,6 @@
 """Verify session routes using mocked application and authentication services."""
 
+from dataclasses import replace
 from datetime import UTC, datetime
 from http import HTTPStatus
 from unittest.mock import Mock
@@ -21,6 +22,7 @@ from app.core.exceptions import (
 from app.domain.entities.session_attendee import SessionAttendee, SessionOccupancy
 from app.domain.entities.session_record import SessionRecord
 from app.domain.entities.user_account import UserAccount
+from app.domain.entities.user_role import UserRole
 
 RECORD = SessionRecord(
     2,
@@ -32,7 +34,9 @@ RECORD = SessionRecord(
     20,
     (4,),
 )
-ACCOUNT = UserAccount(7, "person@example.test", "hash", "Alex", "Rivera")
+ACCOUNT = UserAccount(
+    7, "person@example.test", "hash", "Alex", "Rivera", UserRole.ORGANIZER
+)
 
 
 @pytest.fixture
@@ -105,9 +109,11 @@ def test_session_crud_routes(session_client):
     assert fetched.json["session"]["speaker_ids"] == [4]
     assert fetched.json["session"]["version"] == RECORD.version
     assert deleted.data == b""
-    service.create.assert_called_once_with(1, body, creator_id=ACCOUNT.id)
+    service.create.assert_called_once_with(
+        1, body, creator_id=ACCOUNT.id, is_admin=False
+    )
     service.update.assert_called_once_with(
-        1, 2, {"title": "Talk"}, 1, creator_id=ACCOUNT.id
+        1, 2, {"title": "Talk"}, 1, creator_id=ACCOUNT.id, is_admin=False
     )
 
 
@@ -131,6 +137,30 @@ def test_all_session_writes_require_authentication(session_client, method):
     service.update.assert_not_called()
     service.delete.assert_not_called()
     auth.get_authenticated_user.assert_not_called()
+
+
+def test_attendee_cannot_manage_sessions(session_client):
+    """Reject session mutations for an attendee before invoking application services."""
+    client, service, auth = session_client
+    auth.get_authenticated_user.return_value = replace(ACCOUNT, role=UserRole.ATTENDEE)
+    add_cookie(client)
+
+    response = client.delete("/api/v1/events/1/sessions/2")
+
+    assert response.status_code == HTTPStatus.FORBIDDEN
+    service.delete.assert_not_called()
+
+
+def test_admin_session_management_uses_authenticated_role(session_client):
+    """Pass an administrator override for event session management."""
+    client, service, auth = session_client
+    auth.get_authenticated_user.return_value = replace(ACCOUNT, role=UserRole.ADMIN)
+    add_cookie(client)
+
+    response = client.delete("/api/v1/events/1/sessions/2")
+
+    assert response.status_code == HTTPStatus.NO_CONTENT
+    service.delete.assert_called_once_with(1, 2, creator_id=ACCOUNT.id, is_admin=True)
 
 
 def test_session_routes_map_validation_and_not_found_errors(session_client):
@@ -229,7 +259,9 @@ def test_capacity_and_attendee_roster_endpoints(session_client):
     assert capacity.json == {"capacity": 20, "occupied": 3, "available": 17}
     assert roster.status_code == HTTPStatus.OK
     assert roster.json["attendees"][0]["user_id"] == 21
-    attendee_service.list_attendees.assert_called_once_with(1, 2, ACCOUNT.id)
+    attendee_service.list_attendees.assert_called_once_with(
+        1, 2, ACCOUNT.id, is_admin=False
+    )
 
 
 @pytest.mark.parametrize("version", [0, -1, True, "1", None])

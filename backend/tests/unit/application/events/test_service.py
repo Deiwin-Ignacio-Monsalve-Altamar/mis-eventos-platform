@@ -34,8 +34,10 @@ MISSING_FIELD = object()
 def event_service():
     """Build the event application service with a mocked repository."""
     repository = Mock(spec=EventRepository)
-    repository.save.side_effect = lambda event, expected_version=None, owner_id=None: (
-        replace(event, id=12, version=(expected_version or 0) + 1)
+    repository.save.side_effect = (
+        lambda event, expected_version=None, owner_id=None, is_admin=False: replace(
+            event, id=12, version=(expected_version or 0) + 1
+        )
     )
     return EventService(repository), repository
 
@@ -173,7 +175,7 @@ def test_update_event_merges_fields_and_preserves_creator(event_service):
     saved_event = repository.save.call_args.args[0]
     assert saved_event.created_by_id == EVENT.created_by_id
     assert saved_event.capacity == EVENT.capacity
-    repository.save.assert_called_once_with(saved_event, 1, 7)
+    repository.save.assert_called_once_with(saved_event, 1, 7, is_admin=False)
 
 
 def test_update_rejects_another_users_event_before_writing(event_service):
@@ -185,6 +187,18 @@ def test_update_rejects_another_users_event_before_writing(event_service):
         service.update(12, {"title": "Unauthorized"}, 1, creator_id=99)
 
     repository.save.assert_not_called()
+
+
+def test_admin_can_update_foreign_event_without_changing_its_owner(event_service):
+    """Allow explicit administrator override while preserving event attribution."""
+    service, repository = event_service
+    repository.find_by_id.return_value = EVENT
+
+    service.update(12, {"title": "Admin revision"}, 1, creator_id=99, is_admin=True)
+
+    saved_event = repository.save.call_args.args[0]
+    assert saved_event.created_by_id == EVENT.created_by_id
+    repository.save.assert_called_once_with(saved_event, 1, 99, is_admin=True)
 
 
 def test_update_missing_event_raises_not_found(event_service):

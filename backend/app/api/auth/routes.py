@@ -121,4 +121,5 @@ def _public_user(account: UserAccount) -> dict[str, int | str]:
         "email": account.email,
         "first_name": account.first_name,
         "last_name": account.last_name,
+        "role": account.role.value,
     }

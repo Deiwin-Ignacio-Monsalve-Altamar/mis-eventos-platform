@@ -4,7 +4,7 @@ from http import HTTPStatus
 
 from flask import Blueprint, g, jsonify, request
 
-from app.api.auth.decorators import token_required
+from app.api.auth.decorators import roles_required, token_required
 from app.api.responses import concurrency_conflict_response, error_response
 from app.application.dto.event_page import EventPage
 from app.application.events.service import EDITABLE_FIELDS
@@ -20,6 +20,7 @@ from app.core.exceptions import (
 )
 from app.dependencies import get_event_registration_service, get_event_service
 from app.domain.entities.event_record import EventRecord
+from app.domain.entities.user_role import UserRole
 
 event_bp = Blueprint("events", __name__)
 
@@ -63,6 +64,7 @@ def get_event(event_id: int):
 
 @event_bp.get("/events/mine")
 @token_required
+@roles_required(UserRole.ORGANIZER, UserRole.ADMIN)
 def list_my_events():
     """Return a paginated list scoped to the authenticated event creator."""
     if "creator_id" in request.args or "user_id" in request.args:
@@ -86,6 +88,7 @@ def list_my_events():
 
 @event_bp.get("/events/mine/summary")
 @token_required
+@roles_required(UserRole.ORGANIZER, UserRole.ADMIN)
 def my_event_dashboard():
     """Return status and date metrics for events owned by the current user."""
     return jsonify(
@@ -95,10 +98,15 @@ def my_event_dashboard():
 
 @event_bp.get("/events/mine/<int:event_id>")
 @token_required
+@roles_required(UserRole.ORGANIZER, UserRole.ADMIN)
 def get_my_event(event_id: int):
-    """Return an event-management record only when it belongs to the caller."""
+    """Return an owned event-management record or any event for an administrator."""
     try:
-        event = get_event_service().get_my_event(event_id, g.current_user.id)
+        event = get_event_service().get_my_event(
+            event_id,
+            g.current_user.id,
+            is_admin=g.current_user.role is UserRole.ADMIN,
+        )
     except NotFoundError as error:
         return error_response("not_found", str(error), HTTPStatus.NOT_FOUND)
     return jsonify({"event": _serialize_event(event)}), HTTPStatus.OK
@@ -106,6 +114,7 @@ def get_my_event(event_id: int):
 
 @event_bp.post("/events")
 @token_required
+@roles_required(UserRole.ORGANIZER, UserRole.ADMIN)
 def create_event():
     """Create an event attributed to the authenticated user."""
     request_data = request.get_json(silent=True)
@@ -126,6 +135,7 @@ def create_event():
 
 @event_bp.patch("/events/<int:event_id>")
 @token_required
+@roles_required(UserRole.ORGANIZER, UserRole.ADMIN)
 def update_event(event_id: int):
     """Update supplied fields on an existing event after token validation."""
     request_data = request.get_json(silent=True)
@@ -151,6 +161,7 @@ def update_event(event_id: int):
             _editable_values(request_data),
             expected_version,
             creator_id=g.current_user.id,
+            is_admin=g.current_user.role is UserRole.ADMIN,
         )
     except ConcurrencyConflictError as error:
         return concurrency_conflict_response(str(error), error.current_version)
@@ -166,10 +177,15 @@ def update_event(event_id: int):
 
 @event_bp.delete("/events/<int:event_id>")
 @token_required
+@roles_required(UserRole.ORGANIZER, UserRole.ADMIN)
 def delete_event(event_id: int):
     """Delete an event when it has no registrations or other related records."""
     try:
-        get_event_service().delete(event_id, creator_id=g.current_user.id)
+        get_event_service().delete(
+            event_id,
+            creator_id=g.current_user.id,
+            is_admin=g.current_user.role is UserRole.ADMIN,
+        )
     except NotFoundError as error:
         return error_response("not_found", str(error), HTTPStatus.NOT_FOUND)
     except RelatedRecordsError as error:

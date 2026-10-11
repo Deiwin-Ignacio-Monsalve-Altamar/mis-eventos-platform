@@ -144,6 +144,7 @@ class SQLAlchemyEventRepository:
         event: EventRecord,
         expected_version: int | None = None,
         owner_id: int | None = None,
+        is_admin: bool = False,
     ) -> EventRecord:
         """Insert or update an event and commit the transaction."""
         model = (
@@ -162,7 +163,7 @@ class SQLAlchemyEventRepository:
             if owner_id is None:
                 self._session.rollback()
                 raise AuthorizationError("An authenticated event owner is required.")
-            if model.created_by_id != owner_id:
+            if model.created_by_id != owner_id and not is_admin:
                 self._session.rollback()
                 raise AuthorizationError("Only the event creator can edit this event.")
             if expected_version is None:
@@ -244,8 +245,8 @@ class SQLAlchemyEventRepository:
             is not None
         )
 
-    def delete(self, event_id: int, owner_id: int) -> bool:
-        """Delete an owned event only when it has no dependent project records."""
+    def delete(self, event_id: int, owner_id: int, is_admin: bool = False) -> bool:
+        """Delete an authorized event only when no dependent records remain."""
         model = self._session.scalar(
             select(Event)
             .where(Event.id == event_id)
@@ -254,7 +255,7 @@ class SQLAlchemyEventRepository:
         )
         if model is None:
             return False
-        if model.created_by_id != owner_id:
+        if model.created_by_id != owner_id and not is_admin:
             self._session.rollback()
             raise AuthorizationError("Only the event creator can delete this event.")
         if model.registrations or model.sessions or model.speakers:

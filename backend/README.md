@@ -126,6 +126,59 @@ All resource routes use the `/api/v1` prefix. Protected routes require the `acce
 | `GET /auth/me` | Cookie | Returns the current public profile; 401 if the cookie is missing or invalid. |
 | `POST /auth/logout` | Public | Expires the cookie and returns 204. |
 
+### User roles
+
+Every account has a persisted `ATTENDEE`, `ORGANIZER`, or `ADMIN` role. Public
+registration always creates an `ATTENDEE`; submitted role fields are ignored.
+The authenticated identity returned by login and `GET /auth/me` includes the
+current database role. The API reloads the account for each authenticated
+request, so role changes apply on the next request without waiting for a token
+to expire.
+
+| Role | Backend permissions |
+| --- | --- |
+| `ATTENDEE` | Public event/session reads, self-service event/session registration, and own account activity. |
+| `ORGANIZER` | Attendee permissions plus event creation and management of events and sessions they own. |
+| `ADMIN` | Organizer permissions plus management of other users' events/sessions and promotion of attendees. |
+
+Event ownership remains required for organizers. The administrator override is
+limited to event management routes; it does not change registration capacity or
+enrollment rules. `POST /api/v1/admin/users/{user_id}/promote-organizer` is
+administrator-only, cannot target the acting administrator, promotes only an
+attendee, and safely returns the existing organizer when repeated. It cannot
+assign `ADMIN`.
+
+#### Initialize the first administrator
+
+Apply migrations and create/register the intended account first. Then run the
+command from `backend/` in a trusted environment with the normal database
+configuration loaded:
+
+```sh
+poetry run flask --app app.main:create_app bootstrap-admin admin@example.test
+```
+
+The command verifies that the target exists and no administrator is already
+initialized, then performs the change in one database transaction. It prints
+only the account ID. Do not run it from a public request or expose it through a
+web endpoint. A repeated invocation fails after the first administrator exists;
+there is no automated recovery path if all administrator accounts are lost.
+Resolve that case through a reviewed, access-controlled database operation.
+
+Existing users with one or more events attributed through `events.created_by_id`
+become organizers in the role migration. Other existing users become attendees;
+the migration never creates an administrator. Apply and reverse it with the
+existing Alembic commands:
+
+```sh
+poetry run alembic upgrade head
+poetry run alembic downgrade d17f3a6bc920
+```
+
+The downgrade removes the role column and its classifications while retaining
+users, events, sessions, registrations, and their relationships. Back up data
+and coordinate application rollback before downgrading after role assignments.
+
 ### Events
 
 | Method and route | Access | Purpose and relevant responses |
@@ -133,12 +186,12 @@ All resource routes use the `/api/v1` prefix. Protected routes require the `acce
 | `GET /events` | Public | Paginated catalog; accepts `page`, `page_size`, and `q`; returns `events` and `pagination`. |
 | `GET /events/{event_id}` | Public | Event details; 404 if not found. |
 | `GET /events/{event_id}/capacity` | Public | Capacity, occupancy, and available seats; 404 if not found. |
-| `GET /events/mine` | Cookie | Lists the caller's events; accepts `page`, `page_size`, `q`, and `status`. Ownership comes from the session, not a submitted ID. |
-| `GET /events/mine/summary` | Cookie | Summary of the caller's events. |
-| `GET /events/mine/{event_id}` | Cookie and owner | Administrative event details; an event not owned by the caller or not found returns 404. |
-| `POST /events` | Cookie | Creates an event and returns 201 with `event`; valid input is required. |
-| `PATCH /events/{event_id}` | Cookie and owner | Updates event fields; requires `version`; 403 if forbidden, 404 if not found, 409 on version conflict. |
-| `DELETE /events/{event_id}` | Cookie and owner | Deletes the event and returns 204; 403 if forbidden, 404 if not found, 409 if related records exist. |
+| `GET /events/mine` | Organizer or Admin | Lists the caller's events; accepts `page`, `page_size`, `q`, and `status`. |
+| `GET /events/mine/summary` | Organizer or Admin | Summary of the caller's events. |
+| `GET /events/mine/{event_id}` | Organizer owner or Admin | Returns management details; organizers see only their own events, while Admin can inspect any event. |
+| `POST /events` | Organizer or Admin | Creates an event attributed to the authenticated user; valid input is required. |
+| `PATCH /events/{event_id}` | Organizer owner or Admin | Updates event fields; requires `version`; 403 if forbidden, 404 if not found, 409 on version conflict. |
+| `DELETE /events/{event_id}` | Organizer owner or Admin | Deletes the event and returns 204; 403 if forbidden, 404 if not found, 409 if related records exist. |
 
 ### Event registrations
 
@@ -155,11 +208,11 @@ All resource routes use the `/api/v1` prefix. Protected routes require the `acce
 | --- | --- | --- |
 | `GET /events/{event_id}/sessions` | Public | Lists an event's sessions. |
 | `GET /events/{event_id}/sessions/{session_id}` | Public | Returns a session belonging to the event. |
-| `POST /events/{event_id}/sessions` | Cookie and event owner | Creates a session (201); 403 if the caller is not the owner. |
-| `PATCH /events/{event_id}/sessions/{session_id}` | Cookie and event owner | Updates a session; requires `version`; 403 if forbidden, 409 on conflict. |
-| `DELETE /events/{event_id}/sessions/{session_id}` | Cookie and event owner | Deletes a session and returns 204; 403 if forbidden. |
+| `POST /events/{event_id}/sessions` | Organizer owner or Admin | Creates a session (201); 403 if the caller lacks permission. |
+| `PATCH /events/{event_id}/sessions/{session_id}` | Organizer owner or Admin | Updates a session; requires `version`; 403 if forbidden, 409 on conflict. |
+| `DELETE /events/{event_id}/sessions/{session_id}` | Organizer owner or Admin | Deletes a session and returns 204; 403 if forbidden. |
 | `GET /events/{event_id}/sessions/{session_id}/capacity` | Public | Returns capacity, occupancy, and available seats. |
-| `GET /events/{event_id}/sessions/{session_id}/attendees` | Cookie and event owner | Lists attendees; 403 if the caller is not the owner. |
+| `GET /events/{event_id}/sessions/{session_id}/attendees` | Organizer owner or Admin | Lists attendees; 403 if the caller lacks permission. |
 | `POST /events/{event_id}/sessions/{session_id}/attendees` | Cookie | Registers the current user; 201 or 409 for duplicate registration or capacity limits. |
 | `DELETE /events/{event_id}/sessions/{session_id}/attendees/me` | Cookie | Cancels only the caller's registration; returns 204. |
 

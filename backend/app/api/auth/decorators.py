@@ -9,6 +9,7 @@ from app.api.auth import ACCESS_TOKEN_COOKIE_NAME
 from app.api.responses import error_response
 from app.core.exceptions import AuthenticationError, TokenConfigurationError
 from app.dependencies import get_auth_service
+from app.domain.entities.user_role import UserRole
 
 
 def token_required(view_function):
@@ -41,3 +42,29 @@ def token_required(view_function):
         return view_function(*args, **kwargs)
 
     return wrapped_view
+
+
+def roles_required(*allowed_roles: UserRole):
+    """Require an authenticated database-backed identity to have an allowed role."""
+
+    def decorate(view_function):
+        @wraps(view_function)
+        def wrapped_view(*args, **kwargs):
+            account = getattr(g, "current_user", None)
+            if account is None:
+                return error_response(
+                    "authentication_required",
+                    "Authentication is required.",
+                    HTTPStatus.UNAUTHORIZED,
+                )
+            if account.role not in allowed_roles:
+                return error_response(
+                    "forbidden",
+                    "The account does not have permission to perform this action.",
+                    HTTPStatus.FORBIDDEN,
+                )
+            return view_function(*args, **kwargs)
+
+        return wrapped_view
+
+    return decorate

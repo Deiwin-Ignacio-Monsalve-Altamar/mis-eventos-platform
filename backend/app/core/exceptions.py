@@ -21,6 +21,10 @@ class AuthorizationError(Exception):
     """Raised when an authenticated account lacks access to a resource."""
 
 
+class RoleConflictError(Exception):
+    """Raised when a role transition is not allowed in the current system state."""
+
+
 class CapacityExceededError(Exception):
     """Raised when no session seats remain available."""
 

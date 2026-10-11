@@ -25,11 +25,15 @@ class SessionService:
         self._repository = session_repository
 
     def create(
-        self, event_id: int, values: dict[str, object], creator_id: int
+        self,
+        event_id: int,
+        values: dict[str, object],
+        creator_id: int,
+        is_admin: bool = False,
     ) -> SessionRecord:
         """Validate and create a session for an event owned by the caller."""
         event = self._event(event_id)
-        self._require_creator(event, creator_id)
+        self._require_creator(event, creator_id, is_admin)
         record = self._validated(event_id, values, event, None)
         if self._repository.find_overlapping(
             event_id, record.starts_at, record.ends_at
@@ -57,10 +61,11 @@ class SessionService:
         values: dict[str, object],
         expected_version: object,
         creator_id: int,
+        is_admin: bool = False,
     ) -> SessionRecord:
         """Merge and save session fields after checking event ownership."""
         event = self._event(event_id)
-        self._require_creator(event, creator_id)
+        self._require_creator(event, creator_id, is_admin)
         existing = self._repository.find_by_id(event_id, session_id)
         if existing is None:
             raise NotFoundError("Session not found for this event.")
@@ -89,17 +94,25 @@ class SessionService:
             raise ValidationError("Session schedule overlaps another session.")
         return self._repository.save(record, expected_version)
 
-    def delete(self, event_id: int, session_id: int, creator_id: int) -> None:
+    def delete(
+        self,
+        event_id: int,
+        session_id: int,
+        creator_id: int,
+        is_admin: bool = False,
+    ) -> None:
         """Delete an owned session without affecting related speaker profiles."""
         event = self._event(event_id)
-        self._require_creator(event, creator_id)
+        self._require_creator(event, creator_id, is_admin)
         if not self._repository.delete(event_id, session_id):
             raise NotFoundError("Session not found for this event.")
 
     @staticmethod
-    def _require_creator(event: EventRecord, creator_id: int) -> None:
-        """Reject session management by anyone other than the event creator."""
-        if event.created_by_id != creator_id:
+    def _require_creator(
+        event: EventRecord, creator_id: int, is_admin: bool = False
+    ) -> None:
+        """Reject non-owner session management unless an admin override is explicit."""
+        if event.created_by_id != creator_id and not is_admin:
             raise AuthorizationError("Only the event creator can manage sessions.")
 
     def _event(self, event_id: int):

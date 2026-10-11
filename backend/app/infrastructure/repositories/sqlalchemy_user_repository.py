@@ -1,11 +1,16 @@
 """Persist domain user accounts with the application's SQLAlchemy session."""
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.exceptions import DuplicateAccountError
+from app.core.exceptions import (
+    DuplicateAccountError,
+    NotFoundError,
+    RoleConflictError,
+)
 from app.domain.entities.user_account import UserAccount
+from app.domain.entities.user_role import UserRole
 from app.infrastructure.database.models import User
 
 
@@ -35,6 +40,7 @@ class SQLAlchemyUserRepository:
             password_hash=account.password_hash,
             first_name=account.first_name,
             last_name=account.last_name,
+            role=account.role.value,
         )
         self._session.add(user)
         try:
@@ -57,7 +63,58 @@ class SQLAlchemyUserRepository:
             password_hash=user.password_hash,
             first_name=user.first_name,
             last_name=user.last_name,
+            role=UserRole(user.role),
         )
+
+    def promote_attendee_to_organizer(self, user_id: int) -> UserAccount:
+        """Promote one attendee atomically and allow repeat requests idempotently."""
+        user = self._session.scalar(
+            select(User).where(User.id == user_id).with_for_update()
+        )
+        if user is None:
+            raise NotFoundError("User not found.")
+        if user.role == UserRole.ADMIN.value:
+            raise RoleConflictError("Administrators cannot be promoted to organizer.")
+        if user.role == UserRole.ATTENDEE.value:
+            user.role = UserRole.ORGANIZER.value
+            self._session.add(user)
+            try:
+                self._session.commit()
+            except Exception:
+                self._session.rollback()
+                raise
+        return self._to_account(user)
+
+    def bootstrap_first_admin(self, email: str) -> UserAccount:
+        """Set the first administrator under a transaction that serializes bootstraps."""
+        try:
+            first_user_id = self._session.scalar(
+                select(User.id).order_by(User.id).limit(1)
+            )
+            if first_user_id is None:
+                raise NotFoundError("The target user does not exist.")
+            self._session.scalar(
+                select(User).where(User.id == first_user_id).with_for_update()
+            )
+            admin_exists = self._session.scalar(
+                select(func.count(User.id)).where(User.role == UserRole.ADMIN.value)
+            )
+            if admin_exists:
+                raise RoleConflictError("An administrator is already initialized.")
+            user = self._session.scalar(
+                select(User).where(User.email == email).with_for_update()
+            )
+            if user is None:
+                raise NotFoundError("The target user does not exist.")
+            if user.role == UserRole.ADMIN.value:
+                raise RoleConflictError("The target user is already an administrator.")
+            user.role = UserRole.ADMIN.value
+            self._session.add(user)
+            self._session.commit()
+        except Exception:
+            self._session.rollback()
+            raise
+        return self._to_account(user)
 
     @staticmethod
     def _is_email_conflict(error: IntegrityError) -> bool:

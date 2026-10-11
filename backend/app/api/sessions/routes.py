@@ -4,7 +4,7 @@ from http import HTTPStatus
 
 from flask import Blueprint, g, jsonify, request
 
-from app.api.auth.decorators import token_required
+from app.api.auth.decorators import roles_required, token_required
 from app.api.responses import concurrency_conflict_response, error_response
 from app.application.sessions.service import SESSION_FIELDS
 from app.core.exceptions import (
@@ -17,12 +17,14 @@ from app.core.exceptions import (
 )
 from app.dependencies import get_session_attendee_service, get_session_service
 from app.domain.entities.session_record import SessionRecord
+from app.domain.entities.user_role import UserRole
 
 session_bp = Blueprint("sessions", __name__)
 
 
 @session_bp.post("/events/<int:event_id>/sessions")
 @token_required
+@roles_required(UserRole.ORGANIZER, UserRole.ADMIN)
 def create_session(event_id: int):
     """Create a scheduled session under the requested event."""
     values = _request_values()
@@ -30,7 +32,10 @@ def create_session(event_id: int):
         return values
     try:
         session = get_session_service().create(
-            event_id, values, creator_id=g.current_user.id
+            event_id,
+            values,
+            creator_id=g.current_user.id,
+            is_admin=g.current_user.role is UserRole.ADMIN,
         )
     except AuthorizationError as error:
         return error_response("forbidden", str(error), HTTPStatus.FORBIDDEN)
@@ -65,6 +70,7 @@ def get_session(event_id: int, session_id: int):
 
 @session_bp.patch("/events/<int:event_id>/sessions/<int:session_id>")
 @token_required
+@roles_required(UserRole.ORGANIZER, UserRole.ADMIN)
 def update_session(event_id: int, session_id: int):
     """Partially update a session belonging to the requested event."""
     values = _request_values(require_version=True)
@@ -73,7 +79,12 @@ def update_session(event_id: int, session_id: int):
     expected_version = values.pop("version")
     try:
         session = get_session_service().update(
-            event_id, session_id, values, expected_version, creator_id=g.current_user.id
+            event_id,
+            session_id,
+            values,
+            expected_version,
+            creator_id=g.current_user.id,
+            is_admin=g.current_user.role is UserRole.ADMIN,
         )
     except AuthorizationError as error:
         return error_response("forbidden", str(error), HTTPStatus.FORBIDDEN)
@@ -88,10 +99,16 @@ def update_session(event_id: int, session_id: int):
 
 @session_bp.delete("/events/<int:event_id>/sessions/<int:session_id>")
 @token_required
+@roles_required(UserRole.ORGANIZER, UserRole.ADMIN)
 def delete_session(event_id: int, session_id: int):
     """Delete a session without deleting its parent event or speaker profiles."""
     try:
-        get_session_service().delete(event_id, session_id, creator_id=g.current_user.id)
+        get_session_service().delete(
+            event_id,
+            session_id,
+            creator_id=g.current_user.id,
+            is_admin=g.current_user.role is UserRole.ADMIN,
+        )
     except AuthorizationError as error:
         return error_response("forbidden", str(error), HTTPStatus.FORBIDDEN)
     except NotFoundError as error:
@@ -101,11 +118,15 @@ def delete_session(event_id: int, session_id: int):
 
 @session_bp.get("/events/<int:event_id>/sessions/<int:session_id>/attendees")
 @token_required
+@roles_required(UserRole.ORGANIZER, UserRole.ADMIN)
 def list_session_attendees(event_id: int, session_id: int):
     """List session attendees for the event creator only."""
     try:
         attendees = get_session_attendee_service().list_attendees(
-            event_id, session_id, g.current_user.id
+            event_id,
+            session_id,
+            g.current_user.id,
+            is_admin=g.current_user.role is UserRole.ADMIN,
         )
     except AuthorizationError as error:
         return error_response("forbidden", str(error), HTTPStatus.FORBIDDEN)
