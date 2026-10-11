@@ -25,16 +25,22 @@ class SQLAlchemyEventRepository:
         """Receive the active SQLAlchemy session used for event persistence."""
         self._session = session
 
-    def find_by_id(self, event_id: int) -> EventRecord | None:
-        """Load an event by its database identifier."""
-        event = self._session.get(Event, event_id)
+    def find_by_id(
+        self, event_id: int, *, lock_for_read: bool = False
+    ) -> EventRecord | None:
+        """Load an event, optionally share-locking it for public child reads."""
+        event = (
+            self._session.get(Event, event_id, with_for_update={"read": True})
+            if lock_for_read
+            else self._session.get(Event, event_id)
+        )
         return self._to_record(event) if event is not None else None
 
     def list_events(
         self, page: int, page_size: int, search_query: str | None
     ) -> tuple[list[EventRecord], int]:
-        """Load a stable event page and its total using bound SQLAlchemy filters."""
-        filters = []
+        """Load a published event page and count using bound SQLAlchemy filters."""
+        filters = [Event.status == "published"]
         if search_query is not None:
             filters.append(
                 or_(

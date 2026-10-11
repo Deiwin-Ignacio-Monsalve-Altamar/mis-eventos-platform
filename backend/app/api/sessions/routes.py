@@ -15,7 +15,11 @@ from app.core.exceptions import (
     NotFoundError,
     ValidationError,
 )
-from app.dependencies import get_session_attendee_service, get_session_service
+from app.dependencies import (
+    get_event_service,
+    get_session_attendee_service,
+    get_session_service,
+)
 from app.domain.entities.session_record import SessionRecord
 from app.domain.entities.user_role import UserRole
 
@@ -50,6 +54,7 @@ def create_session(event_id: int):
 def list_sessions(event_id: int):
     """Return the sessions scheduled for an existing event."""
     try:
+        _require_published_event(event_id)
         sessions = get_session_service().list_by_event(event_id)
     except NotFoundError as error:
         return error_response("not_found", str(error), HTTPStatus.NOT_FOUND)
@@ -62,6 +67,7 @@ def list_sessions(event_id: int):
 def get_session(event_id: int, session_id: int):
     """Return a session only when it belongs to the event in the URL."""
     try:
+        _require_published_event(event_id)
         session = get_session_service().get(event_id, session_id)
     except NotFoundError as error:
         return error_response("not_found", str(error), HTTPStatus.NOT_FOUND)
@@ -141,6 +147,7 @@ def list_session_attendees(event_id: int, session_id: int):
 def get_session_occupancy(event_id: int, session_id: int):
     """Return session capacity and active session enrollment counts."""
     try:
+        _require_published_event(event_id)
         occupancy = get_session_attendee_service().get_occupancy(event_id, session_id)
     except NotFoundError as error:
         return error_response("not_found", str(error), HTTPStatus.NOT_FOUND)
@@ -204,6 +211,13 @@ def _request_values(require_version: bool = False) -> dict[str, object] | tuple:
                 HTTPStatus.BAD_REQUEST,
             )
     return data
+
+
+def _require_published_event(event_id: int) -> None:
+    """Hide session and occupancy data when the parent event is not public."""
+    event = get_event_service().get_by_id(event_id)
+    if event.status != "published":
+        raise NotFoundError("Event not found.")
 
 
 def _serialize(session: SessionRecord) -> dict[str, object]:

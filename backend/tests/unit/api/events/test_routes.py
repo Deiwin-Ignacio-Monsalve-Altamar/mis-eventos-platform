@@ -52,6 +52,7 @@ EVENT = EventRecord(
     status="draft",
     created_by_id=7,
 )
+PUBLISHED_EVENT = replace(EVENT, status="published")
 
 
 @pytest.fixture
@@ -61,9 +62,9 @@ def event_client(monkeypatch):
     event_service = Mock()
     event_service.create.return_value = EVENT
     event_service.update.return_value = EVENT
-    event_service.get_by_id.return_value = EVENT
+    event_service.get_by_id.return_value = PUBLISHED_EVENT
     event_service.list_events.return_value = EventPage(
-        events=(EVENT,), page=1, page_size=20, total=1
+        events=(PUBLISHED_EVENT,), page=1, page_size=20, total=1
     )
     event_service.list_my_events.return_value = EventPage(
         events=(EVENT,), page=1, page_size=20, total=1
@@ -187,14 +188,14 @@ def test_recommendations_return_api_availability_and_exclude_anonymous_users(
     """Only authenticated callers receive their server-filtered recommendations."""
     client, event_service, _ = event_client
     event_service.recommendations_for_user.return_value = [
-        {"event": EVENT, "available_seats": 98}
+        {"event": PUBLISHED_EVENT, "available_seats": 98}
     ]
     add_valid_access_cookie(client)
 
     response = client.get("/api/v1/events/recommendations/me")
 
     assert response.status_code == HTTPStatus.OK
-    assert response.json["recommendations"][0]["event"]["id"] == EVENT.id
+    assert response.json["recommendations"][0]["event"]["id"] == PUBLISHED_EVENT.id
     assert response.json["recommendations"][0]["available_seats"] == 98
     event_service.recommendations_for_user.assert_called_once_with(ACCOUNT.id)
 
@@ -632,7 +633,7 @@ def test_event_list_maps_page_and_search_results(event_client):
     """Serialize a service page with pagination metadata and the matching events."""
     client, event_service, _ = event_client
     event_service.list_events.return_value = EventPage(
-        events=(EVENT,), page=2, page_size=3, total=7
+        events=(PUBLISHED_EVENT,), page=2, page_size=3, total=7
     )
 
     response = client.get("/api/v1/events?page=2&page_size=3&q=%20engineering%20")
@@ -671,8 +672,8 @@ def test_get_event_returns_service_result(event_client):
     response = client.get("/api/v1/events/12")
 
     assert response.status_code == HTTPStatus.OK
-    assert response.json["event"]["id"] == EVENT.id
-    assert response.json["event"]["version"] == EVENT.version
+    assert response.json["event"]["id"] == PUBLISHED_EVENT.id
+    assert response.json["event"]["status"] == "published"
     event_service.get_by_id.assert_called_once_with(12)
 
 
