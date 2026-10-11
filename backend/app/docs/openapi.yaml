@@ -1198,6 +1198,75 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /session-registrations/me:
+    get:
+      tags: [Sessions]
+      summary: List the current user's session registrations
+      description: >-
+        Returns session registrations belonging to the authenticated account, with associated event
+        and session details. A cancelled parent event registration is represented as a cancelled
+        session registration even if the child row is inconsistent.
+      security:
+        - AccessTokenCookie: []
+      parameters:
+        - in: query
+          name: page
+          schema: {type: integer, minimum: 1, default: 1}
+        - in: query
+          name: page_size
+          schema: {type: integer, minimum: 1, maximum: 100, default: 20}
+      responses:
+        "200":
+          description: Session registrations and pagination metadata.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [registrations, pagination]
+                properties:
+                  registrations:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, status, registered_at, event, session]
+                      properties:
+                        id: {type: integer}
+                        status: {type: string, enum: [active, cancelled]}
+                        registered_at: {type: string, format: date-time}
+                        event:
+                          type: object
+                          required: [id, title, status, location]
+                          properties:
+                            id: {type: integer}
+                            title: {type: string}
+                            status: {type: string}
+                            location:
+                              type: string
+                              nullable: true
+                        session:
+                          type: object
+                          required: [id, title, description, starts_at, ends_at, capacity]
+                          properties:
+                            id: {type: integer}
+                            title: {type: string}
+                            description:
+                              type: string
+                              nullable: true
+                            starts_at: {type: string, format: date-time}
+                            ends_at: {type: string, format: date-time}
+                            capacity: {type: integer}
+                  pagination: {$ref: "#/components/schemas/Pagination"}
+        "400":
+          description: Invalid pagination or user_id query parameter.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+        "401":
+          description: Authentication required.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+
   /events/{event_id}/sessions:
     parameters:
       - in: path

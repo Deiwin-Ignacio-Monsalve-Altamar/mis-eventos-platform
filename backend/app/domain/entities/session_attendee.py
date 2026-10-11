@@ -22,3 +22,22 @@ class SessionAttendee:
     last_name: str
     email: str
     registered_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class SessionRegistrationDetails:
+    """Represent a caller's session enrollment with its event and schedule."""
+
+    id: int
+    status: str
+    registered_at: datetime
+    session_id: int
+    session_title: str
+    session_description: str | None
+    session_starts_at: datetime
+    session_ends_at: datetime
+    session_capacity: int
+    event_id: int
+    event_title: str
+    event_status: str
+    event_location: str | None
