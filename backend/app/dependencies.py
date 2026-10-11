@@ -2,6 +2,7 @@
 
 from flask import current_app
 
+from app.application.administration.service import AdministrationService
 from app.application.auth.service import AuthService
 from app.application.events.service import EventService
 from app.application.health.service import HealthService
@@ -41,6 +42,11 @@ def get_auth_service() -> AuthService:
         jwt_secret=current_app.config.get("JWT_SECRET_KEY"),
         access_token_ttl_seconds=current_app.config["JWT_ACCESS_TOKEN_TTL_SECONDS"],
     )
+
+
+def get_administration_service() -> AdministrationService:
+    """Build role-administration use cases from the active database session."""
+    return AdministrationService(user_repository=SQLAlchemyUserRepository(db.session))
 
 
 def get_event_service() -> EventService:

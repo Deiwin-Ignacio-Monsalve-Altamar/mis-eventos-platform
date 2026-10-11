@@ -48,12 +48,13 @@ class EventService:
         values: dict[str, object],
         expected_version: object,
         creator_id: int,
+        is_admin: bool = False,
     ) -> EventRecord:
-        """Authorize the creator, then validate and persist an event update."""
+        """Authorize the creator or explicit admin override before saving changes."""
         existing = self._event_repository.find_by_id(event_id)
         if existing is None:
             raise NotFoundError("Event not found.")
-        if existing.created_by_id != creator_id:
+        if existing.created_by_id != creator_id and not is_admin:
             raise AuthorizationError("Only the event creator can edit this event.")
         if (
             isinstance(expected_version, bool)
@@ -81,16 +82,18 @@ class EventService:
             version=existing.version,
             **event_values,
         )
-        return self._event_repository.save(updated, expected_version, creator_id)
+        return self._event_repository.save(
+            updated, expected_version, creator_id, is_admin=is_admin
+        )
 
-    def delete(self, event_id: int, creator_id: int) -> None:
-        """Delete an owned event or raise when missing, forbidden, or referenced."""
+    def delete(self, event_id: int, creator_id: int, is_admin: bool = False) -> None:
+        """Delete an owned or admin-managed event subject to relation constraints."""
         existing = self._event_repository.find_by_id(event_id)
         if existing is None:
             raise NotFoundError("Event not found.")
-        if existing.created_by_id != creator_id:
+        if existing.created_by_id != creator_id and not is_admin:
             raise AuthorizationError("Only the event creator can delete this event.")
-        if not self._event_repository.delete(event_id, creator_id):
+        if not self._event_repository.delete(event_id, creator_id, is_admin=is_admin):
             raise NotFoundError("Event not found.")
 
     def get_by_id(self, event_id: int) -> EventRecord:
@@ -147,9 +150,15 @@ class EventService:
         )
         return EventPage(tuple(events), validated_page, validated_page_size, total)
 
-    def get_my_event(self, event_id: int, creator_id: int) -> EventRecord:
-        """Return an event only when it belongs to the authenticated creator."""
-        event = self._event_repository.find_by_id_for_creator(event_id, creator_id)
+    def get_my_event(
+        self, event_id: int, creator_id: int, is_admin: bool = False
+    ) -> EventRecord:
+        """Return an owned event or any event for an explicit admin request."""
+        event = (
+            self._event_repository.find_by_id(event_id)
+            if is_admin
+            else self._event_repository.find_by_id_for_creator(event_id, creator_id)
+        )
         if event is None:
             raise NotFoundError("Event not found.")
         return event

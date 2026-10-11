@@ -36,6 +36,8 @@ def test_application_factory_registers_routes_and_api_documentation():
     assert "/api/v1/auth/register" in registered_rules
     assert "/api/v1/events" in registered_rules
     assert "/api/v1/events/<int:event_id>/sessions" in registered_rules
+    assert "/api/v1/admin/users/<int:user_id>/promote-organizer" in registered_rules
+    assert "bootstrap-admin" in app.cli.commands
 
 
 def test_flask_http_errors_use_json_and_preserve_protocol_headers():

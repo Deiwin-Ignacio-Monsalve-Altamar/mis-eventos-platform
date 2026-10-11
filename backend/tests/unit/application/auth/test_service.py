@@ -14,6 +14,7 @@ from app.core.exceptions import (
 )
 from app.core.security import create_access_token, hash_password, verify_password
 from app.domain.entities.user_account import UserAccount
+from app.domain.entities.user_role import UserRole
 from app.domain.repositories.user_repository import UserRepository
 
 JWT_SECRET = "unit-test-secret-with-more-than-thirty-two-bytes"
@@ -42,6 +43,8 @@ def test_registration_normalizes_email_hashes_password_and_uses_repository(
     assert account.id == 23
     assert account.email == "attendee@example.test"
     assert account.first_name == "Alex"
+    assert account.role is UserRole.ATTENDEE
+    assert repository.add.call_args.args[0].role is UserRole.ATTENDEE
     assert verify_password("correct-horse", account.password_hash)
     repository.find_by_email.assert_called_once_with("attendee@example.test")
     repository.add.assert_called_once()
@@ -94,6 +97,29 @@ def test_login_verifies_credentials_and_returns_signed_token(auth_service):
     assert authenticated_account == account
     assert jwt.decode(token, JWT_SECRET, algorithms=["HS256"])["sub"] == "23"
     repository.find_by_email.assert_called_once_with("attendee@example.test")
+
+
+def test_authenticated_identity_reads_current_role_from_repository(auth_service):
+    """Resolve current persisted permissions instead of relying on token role claims."""
+    service, repository = auth_service
+    signed_in_account = UserAccount(
+        id=23,
+        email="attendee@example.test",
+        password_hash=hash_password("correct-horse"),
+        first_name="Alex",
+        last_name="Rivera",
+        role=UserRole.ATTENDEE,
+    )
+    repository.find_by_email.return_value = signed_in_account
+    _, token = service.authenticate("attendee@example.test", "correct-horse")
+    repository.find_by_id.return_value = replace(
+        signed_in_account, role=UserRole.ORGANIZER
+    )
+
+    current_identity = service.get_authenticated_user(token)
+
+    assert current_identity.role is UserRole.ORGANIZER
+    repository.find_by_id.assert_called_once_with(23)
 
 
 def test_login_rejects_incorrect_credentials(auth_service):

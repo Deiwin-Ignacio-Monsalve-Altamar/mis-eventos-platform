@@ -8,6 +8,7 @@ from app.infrastructure.database.models import (
     Registration,
     SessionRegistration,
     Speaker,
+    User,
 )
 
 
@@ -78,3 +79,17 @@ def test_existing_registration_and_speaker_relationships_are_reused():
     assert SessionRegistration.session.property.mapper.class_ is EventSession
     assert EventSession.speakers.property.mapper.class_ is Speaker
     assert "delete-orphan" in EventSession.registrations.property.cascade
+
+
+def test_user_roles_have_attendee_default_and_database_constraint():
+    """Persist the least-privileged default and constrain stored role values."""
+    role_column = User.__table__.columns["role"]
+    role_checks = {
+        str(constraint.sqltext)
+        for constraint in User.__table__.constraints
+        if isinstance(constraint, CheckConstraint)
+    }
+
+    assert role_column.nullable is False
+    assert str(role_column.server_default.arg) == "'ATTENDEE'"
+    assert "role IN ('ATTENDEE', 'ORGANIZER', 'ADMIN')" in role_checks

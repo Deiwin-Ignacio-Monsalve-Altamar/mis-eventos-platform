@@ -1,6 +1,6 @@
 """Define the user persistence model for attendee accounts."""
 
-from sqlalchemy import CheckConstraint, func
+from sqlalchemy import CheckConstraint, func, text
 
 from app.extensions import db
 
@@ -16,6 +16,10 @@ class User(db.Model):
         CheckConstraint(
             "length(trim(last_name)) > 0", name="ck_users_last_name_not_empty"
         ),
+        CheckConstraint(
+            "role IN ('ATTENDEE', 'ORGANIZER', 'ADMIN')",
+            name="ck_users_role_valid",
+        ),
     )
 
     id = db.Column(db.Integer, primary_key=True)
@@ -23,6 +27,7 @@ class User(db.Model):
     password_hash = db.Column(db.String(255), nullable=False)
     first_name = db.Column(db.String(100), nullable=False)
     last_name = db.Column(db.String(100), nullable=False)
+    role = db.Column(db.String(20), nullable=False, server_default=text("'ATTENDEE'"))
     created_at = db.Column(
         db.DateTime(timezone=True), nullable=False, server_default=func.now()
     )

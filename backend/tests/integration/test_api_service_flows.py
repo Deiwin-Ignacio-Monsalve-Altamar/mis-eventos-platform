@@ -32,6 +32,7 @@ from app.domain.entities.event_registration import (
     EventRegistrationRecord,
 )
 from app.domain.entities.user_account import UserAccount
+from app.domain.entities.user_role import UserRole
 from app.domain.repositories.event_registration_repository import (
     EventRegistrationRepository,
 )
@@ -73,7 +74,17 @@ def application_client(monkeypatch):
         accounts[stored_account.email] = stored_account
         return stored_account
 
+    def promote_account(user_id):
+        """Apply the persisted role transition for protected event-flow cases."""
+        account = next(
+            account for account in accounts.values() if account.id == user_id
+        )
+        promoted = replace(account, role=UserRole.ORGANIZER)
+        accounts[promoted.email] = promoted
+        return promoted
+
     user_repository.add.side_effect = persist_account
+    user_repository.promote_attendee_to_organizer.side_effect = promote_account
     event_repository = Mock(spec=EventRepository)
     event_repository.save.side_effect = lambda event: replace(
         event, id=event.id or EVENT.id
@@ -122,6 +133,7 @@ def test_registration_login_and_protected_event_creation_flow(application_client
     """Run auth routes, application services, and event creation with mocked stores."""
     client, user_repository, event_repository = application_client
     registration_response, login_response = register_and_login(client)
+    user_repository.promote_attendee_to_organizer(7)
 
     event_response = client.post(
         "/api/v1/events",
@@ -157,18 +169,19 @@ def test_related_record_delete_conflict_flows_through_route_and_service(
     application_client,
 ):
     """Map an infrastructure conflict through the service to an API conflict response."""
-    client, _, event_repository = application_client
+    client, user_repository, event_repository = application_client
     event_repository.delete.side_effect = RelatedRecordsError(
         "Events with registrations cannot be deleted."
     )
     _, login_response = register_and_login(client)
+    user_repository.promote_attendee_to_organizer(7)
 
     response = client.delete(f"/api/v1/events/{EVENT.id}")
 
     assert login_response.status_code == HTTPStatus.OK
     assert response.status_code == HTTPStatus.CONFLICT
     assert response.json["error"]["code"] == "related_records"
-    event_repository.delete.assert_called_once_with(EVENT.id, 7)
+    event_repository.delete.assert_called_once_with(EVENT.id, 7, is_admin=False)
 
 
 def test_concurrent_session_enrollments_return_one_success_and_one_capacity_conflict(

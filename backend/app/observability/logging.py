@@ -40,9 +40,11 @@ class JsonFormatter(logging.Formatter):
             "status_code",
             "duration_seconds",
             "stage",
+            "actor_user_id",
+            "target_user_id",
         ):
             value = getattr(record, key, None)
-            if value is not None:
+            if value is not None and isinstance(value, (str, int, float)):
                 payload[key] = value
         if record.exc_info:
             exception = record.exc_info[1]

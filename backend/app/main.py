@@ -10,11 +10,13 @@ from flask_cors import CORS
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.api.admin.routes import admin_bp
 from app.api.auth.routes import auth_bp
 from app.api.error_handlers import register_error_handlers
 from app.api.events.routes import event_bp
 from app.api.health.routes import health_bp
 from app.api.sessions.routes import session_bp
+from app.commands import register_commands
 from app.config import load_config
 from app.docs.swagger import init_swagger
 from app.extensions import db
@@ -88,8 +90,10 @@ def create_app() -> Flask:
     try:
         app.register_blueprint(health_bp, url_prefix="/api/v1")
         app.register_blueprint(auth_bp, url_prefix="/api/v1/auth")
+        app.register_blueprint(admin_bp, url_prefix="/api/v1/admin")
         app.register_blueprint(event_bp, url_prefix="/api/v1")
         app.register_blueprint(session_bp, url_prefix="/api/v1")
+        register_commands(app)
     except Exception:
         logger.exception(
             "Backend application initialization failed.",

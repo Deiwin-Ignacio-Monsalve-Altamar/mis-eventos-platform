@@ -82,7 +82,9 @@ def test_registration_returns_public_account_and_calls_service(auth_client):
     """Return a created response and delegate registration fields to the service."""
     client, service = auth_client
 
-    response = client.post("/api/v1/auth/register", json=registration_payload())
+    response = client.post(
+        "/api/v1/auth/register", json=registration_payload(role="ADMIN")
+    )
 
     assert response.status_code == HTTPStatus.CREATED
     assert response.json["user"] == {
@@ -90,6 +92,7 @@ def test_registration_returns_public_account_and_calls_service(auth_client):
         "email": "attendee@example.test",
         "first_name": "Alex",
         "last_name": "Rivera",
+        "role": "ATTENDEE",
     }
     assert "password_hash" not in response.json["user"]
     service.register.assert_called_once_with(

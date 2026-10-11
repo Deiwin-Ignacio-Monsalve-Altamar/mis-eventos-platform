@@ -21,6 +21,8 @@ tags:
     description: Event registrations
   - name: Sessions
     description: Session and attendee management
+  - name: Administration
+    description: Restricted role administration
 
 components:
   securitySchemes:
@@ -65,7 +67,7 @@ components:
 
     User:
       type: object
-      required: [id, email, first_name, last_name]
+      required: [id, email, first_name, last_name, role]
       properties:
         id:
           type: integer
@@ -80,6 +82,10 @@ components:
         last_name:
           type: string
           example: Rivera
+        role:
+          type: string
+          enum: [ATTENDEE, ORGANIZER, ADMIN]
+          example: ATTENDEE
 
     Event:
       type: object
@@ -346,6 +352,62 @@ paths:
       responses:
         "204":
           description: The access-token cookie was expired.
+
+  /admin/users/{user_id}/promote-organizer:
+    post:
+      tags: [Administration]
+      summary: Promote an attendee to organizer
+      description: Requires an administrator. Repeating a promotion for an organizer returns the unchanged organizer.
+      security:
+        - AccessTokenCookie: []
+      parameters:
+        - in: path
+          name: user_id
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        "200":
+          description: Organizer account returned.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [user]
+                properties:
+                  user:
+                    $ref: "#/components/schemas/User"
+        "400":
+          description: Invalid or self-targeted promotion.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Authentication required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Administrator role required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Target account not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Target role cannot be promoted to organizer.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 
   /events:
     get:

@@ -1,5 +1,6 @@
 """Verify event HTTP behavior with mocked application and authentication services."""
 
+from dataclasses import replace
 from datetime import UTC, datetime
 from http import HTTPStatus
 from unittest.mock import Mock
@@ -29,6 +30,7 @@ from app.domain.entities.event_registration import (
     EventRegistrationRecord,
 )
 from app.domain.entities.user_account import UserAccount
+from app.domain.entities.user_role import UserRole
 
 TEST_TOKEN = "test-access-token"
 ACCOUNT = UserAccount(
@@ -37,6 +39,7 @@ ACCOUNT = UserAccount(
     password_hash="private-password-hash",
     first_name="Alex",
     last_name="Rivera",
+    role=UserRole.ORGANIZER,
 )
 EVENT = EventRecord(
     id=12,
@@ -229,6 +232,23 @@ def test_event_writes_reject_invalid_tokens(event_client, method):
     event_service.update.assert_not_called()
 
 
+def test_attendee_cannot_create_or_manage_events(event_client):
+    """Block event-management operations for an authenticated attendee role."""
+    client, event_service, auth_service = event_client
+    auth_service.get_authenticated_user.return_value = replace(
+        ACCOUNT, role=UserRole.ATTENDEE
+    )
+    add_valid_access_cookie(client)
+
+    create = client.post("/api/v1/events", json=valid_event_payload())
+    manage = client.get("/api/v1/events/mine")
+
+    assert create.status_code == HTTPStatus.FORBIDDEN
+    assert manage.status_code == HTTPStatus.FORBIDDEN
+    event_service.create.assert_not_called()
+    event_service.list_my_events.assert_not_called()
+
+
 def test_update_event_calls_service_and_returns_event(event_client):
     """Return the updated event after passing only supported request fields."""
     client, event_service, _ = event_client
@@ -242,7 +262,11 @@ def test_update_event_calls_service_and_returns_event(event_client):
     assert response.status_code == HTTPStatus.OK
     assert response.json["event"]["title"] == EVENT.title
     event_service.update.assert_called_once_with(
-        12, {"title": "Revised Event"}, 1, creator_id=ACCOUNT.id
+        12,
+        {"title": "Revised Event"},
+        1,
+        creator_id=ACCOUNT.id,
+        is_admin=False,
     )
 
 
@@ -261,7 +285,11 @@ def test_update_event_rejects_non_owner_with_forbidden(event_client):
     assert response.status_code == HTTPStatus.FORBIDDEN
     assert response.json["error"]["code"] == "forbidden"
     event_service.update.assert_called_once_with(
-        12, {"title": "Attempt"}, 1, creator_id=ACCOUNT.id
+        12,
+        {"title": "Attempt"},
+        1,
+        creator_id=ACCOUNT.id,
+        is_admin=False,
     )
 
 
@@ -672,7 +700,7 @@ def test_get_my_event_returns_not_found_for_non_owned_event(event_client):
     response = client.get("/api/v1/events/mine/12")
 
     assert response.status_code == HTTPStatus.NOT_FOUND
-    event_service.get_my_event.assert_called_once_with(12, ACCOUNT.id)
+    event_service.get_my_event.assert_called_once_with(12, ACCOUNT.id, is_admin=False)
 
 
 def test_event_deletion_requires_authentication(event_client):
@@ -717,7 +745,31 @@ def test_event_deletion_returns_no_content(event_client):
 
     assert response.status_code == HTTPStatus.NO_CONTENT
     assert response.data == b""
-    event_service.delete.assert_called_once_with(12, creator_id=ACCOUNT.id)
+    event_service.delete.assert_called_once_with(
+        12, creator_id=ACCOUNT.id, is_admin=False
+    )
+
+
+def test_admin_can_manage_foreign_event(event_client):
+    """Delegate event management with the administrator override from DB identity."""
+    client, event_service, auth_service = event_client
+    auth_service.get_authenticated_user.return_value = replace(
+        ACCOUNT, role=UserRole.ADMIN
+    )
+    add_valid_access_cookie(client)
+
+    response = client.patch(
+        "/api/v1/events/12", json={"title": "Admin update", "version": 1}
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    event_service.update.assert_called_once_with(
+        12,
+        {"title": "Admin update"},
+        1,
+        creator_id=ACCOUNT.id,
+        is_admin=True,
+    )
 
 
 def test_event_deletion_rejects_non_owner_with_forbidden(event_client):
@@ -732,7 +784,9 @@ def test_event_deletion_rejects_non_owner_with_forbidden(event_client):
 
     assert response.status_code == HTTPStatus.FORBIDDEN
     assert response.json["error"]["code"] == "forbidden"
-    event_service.delete.assert_called_once_with(12, creator_id=ACCOUNT.id)
+    event_service.delete.assert_called_once_with(
+        12, creator_id=ACCOUNT.id, is_admin=False
+    )
 
 
 def test_event_deletion_maps_related_record_conflict(event_client):

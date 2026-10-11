@@ -102,6 +102,16 @@ def test_session_management_requires_the_event_creator(setup_service, operation)
     repository.delete.assert_not_called()
 
 
+def test_admin_can_manage_sessions_for_another_users_event(setup_service):
+    """Allow only the explicit admin override to bypass session ownership."""
+    service, repository = setup_service
+
+    created = service.create(1, valid_values(), creator_id=99, is_admin=True)
+
+    assert created.id == 2
+    repository.save.assert_called_once()
+
+
 def test_update_excludes_current_session_and_delete(setup_service):
     """Merge updates, exclude the current identifier from overlaps, and delete."""
     service, repository = setup_service

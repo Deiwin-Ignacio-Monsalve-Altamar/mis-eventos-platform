@@ -2,6 +2,8 @@
 
 from dataclasses import dataclass
 
+from app.domain.entities.user_role import UserRole
+
 
 @dataclass(frozen=True, slots=True)
 class UserAccount:
@@ -12,3 +14,4 @@ class UserAccount:
     first_name: str
     last_name: str
     id: int | None = None
+    role: UserRole = UserRole.ATTENDEE

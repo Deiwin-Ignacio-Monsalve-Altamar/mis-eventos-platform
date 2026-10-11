@@ -45,10 +45,11 @@ class EventRepository(Protocol):
         event: EventRecord,
         expected_version: int | None = None,
         owner_id: int | None = None,
+        is_admin: bool = False,
     ) -> EventRecord:
         """Insert an event or atomically update it against the client's version."""
         ...
 
-    def delete(self, event_id: int, owner_id: int) -> bool:
-        """Delete an event with no related records and report whether it existed."""
+    def delete(self, event_id: int, owner_id: int, is_admin: bool = False) -> bool:
+        """Delete an owned or admin-managed event with no related records."""
         ...
