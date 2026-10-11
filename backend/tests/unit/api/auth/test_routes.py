@@ -38,12 +38,23 @@ def secure_auth_client(monkeypatch):
     return _make_auth_client(monkeypatch, secure_cookie=True)
 
 
-def _make_auth_client(monkeypatch, secure_cookie):
+@pytest.fixture
+def cross_site_auth_client(monkeypatch):
+    """Provide secure auth routes configured for a separate frontend origin."""
+    return _make_auth_client(
+        monkeypatch,
+        secure_cookie=True,
+        frontend_origin="https://events.example.com",
+    )
+
+
+def _make_auth_client(monkeypatch, secure_cookie, frontend_origin=""):
     """Build the authentication test client with the requested cookie policy."""
     app = Flask(__name__)
     app.config.update(
         JWT_ACCESS_TOKEN_TTL_SECONDS=3600,
         JWT_COOKIE_SECURE=secure_cookie,
+        FRONTEND_ORIGIN=frontend_origin,
     )
     service = Mock()
     service.register.return_value = ACCOUNT
@@ -195,3 +206,33 @@ def test_login_and_logout_mark_auth_cookie_secure_when_enabled(secure_auth_clien
 
     assert "Secure" in login_response.headers["Set-Cookie"]
     assert "Secure" in logout_response.headers["Set-Cookie"]
+
+
+def test_cross_site_login_and_logout_use_secure_none_cookie(cross_site_auth_client):
+    """Use the cross-site cookie attribute only for a configured secure origin."""
+    client, _ = cross_site_auth_client
+
+    login_response = client.post(
+        "/api/v1/auth/login",
+        json={"email": "attendee@example.test", "password": "correct-password"},
+    )
+    logout_response = client.post("/api/v1/auth/logout")
+
+    for response in (login_response, logout_response):
+        cookie = response.headers["Set-Cookie"]
+        assert "HttpOnly" in cookie
+        assert "Secure" in cookie
+        assert "SameSite=None" in cookie
+        assert "Path=/api/v1" in cookie
+
+
+def test_secure_cookie_without_frontend_origin_keeps_lax(secure_auth_client):
+    """Keep the stricter local/default cookie policy without cross-origin CORS."""
+    client, _ = secure_auth_client
+
+    response = client.post(
+        "/api/v1/auth/login",
+        json={"email": "attendee@example.test", "password": "correct-password"},
+    )
+
+    assert "SameSite=Lax" in response.headers["Set-Cookie"]
