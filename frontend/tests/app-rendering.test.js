@@ -27,6 +27,7 @@ test('application provider renders every required route without a blank screen',
       ['/profile', 'Estamos verificando tu sesión…'],
       ['/my-events', 'Estamos verificando tu sesión…'],
       ['/my-registrations', 'Estamos verificando tu sesión…'],
+      ['/admin/users', 'Estamos verificando tu sesión…'],
       ['/route-that-does-not-exist', 'Página no encontrada'],
     ]
 

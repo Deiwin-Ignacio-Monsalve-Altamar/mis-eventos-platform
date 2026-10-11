@@ -143,6 +143,66 @@ def test_create_event_maps_response_and_uses_authenticated_identity(event_client
     auth_service.get_authenticated_user.assert_called_once_with(TEST_TOKEN)
 
 
+def test_owner_metrics_are_scoped_to_authenticated_creator(event_client):
+    """Return managed event details and counts from the current creator's service result."""
+    client, event_service, _ = event_client
+    add_valid_access_cookie(client)
+    event_service.owner_dashboard.return_value = {
+        "summary": {"total_events": 1, "active_registrations": 4},
+        "events": [
+            {
+                "event": EVENT,
+                "session_count": 2,
+                "active_registrations": 4,
+                "available_seats": 96,
+            }
+        ],
+    }
+
+    response = client.get("/api/v1/events/mine/metrics")
+
+    assert response.status_code == HTTPStatus.OK
+    assert response.json["summary"]["active_registrations"] == 4
+    assert response.json["events"][0]["id"] == EVENT.id
+    assert response.json["events"][0]["session_count"] == 2
+    event_service.owner_dashboard.assert_called_once_with(ACCOUNT.id)
+
+
+@pytest.mark.parametrize("role", [UserRole.ATTENDEE])
+def test_attendee_cannot_access_owner_metrics(event_client, role):
+    """Require organizer or administrator role before requesting owner metrics."""
+    client, event_service, auth_service = event_client
+    auth_service.get_authenticated_user.return_value = replace(ACCOUNT, role=role)
+    add_valid_access_cookie(client)
+
+    response = client.get("/api/v1/events/mine/metrics")
+
+    assert response.status_code == HTTPStatus.FORBIDDEN
+    event_service.owner_dashboard.assert_not_called()
+
+
+def test_recommendations_return_api_availability_and_exclude_anonymous_users(
+    event_client,
+):
+    """Only authenticated callers receive their server-filtered recommendations."""
+    client, event_service, _ = event_client
+    event_service.recommendations_for_user.return_value = [
+        {"event": EVENT, "available_seats": 98}
+    ]
+    add_valid_access_cookie(client)
+
+    response = client.get("/api/v1/events/recommendations/me")
+
+    assert response.status_code == HTTPStatus.OK
+    assert response.json["recommendations"][0]["event"]["id"] == EVENT.id
+    assert response.json["recommendations"][0]["available_seats"] == 98
+    event_service.recommendations_for_user.assert_called_once_with(ACCOUNT.id)
+
+    client.delete_cookie("access_token")
+    denied = client.get("/api/v1/events/recommendations/me")
+    assert denied.status_code == HTTPStatus.UNAUTHORIZED
+
+
 def test_create_event_rejects_non_object_json_without_calling_service(event_client):
     """Return bad request for a non-object body before calling the event service."""
     client, event_service, _ = event_client

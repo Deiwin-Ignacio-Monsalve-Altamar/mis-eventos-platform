@@ -238,3 +238,46 @@ def test_role_transitions_promote_attendees_idempotently_and_reject_admins():
         with pytest.raises(NotFoundError):
             repository.promote_attendee_to_organizer(999)
     engine.dispose()
+
+
+def test_list_users_searches_and_returns_only_paginated_directory_fields():
+    """Search the directory without loading private account columns."""
+    engine = create_engine("sqlite://")
+    User.metadata.create_all(engine)
+    with Session(engine) as session:
+        session.add_all(
+            [
+                User(
+                    email="ada@example.test",
+                    password_hash="unused",
+                    first_name="Ada",
+                    last_name="Lovelace",
+                    role=UserRole.ATTENDEE.value,
+                ),
+                User(
+                    email="grace@example.test",
+                    password_hash="unused",
+                    first_name="Grace",
+                    last_name="Hopper",
+                    role=UserRole.ORGANIZER.value,
+                ),
+                User(
+                    email="other@example.test",
+                    password_hash="unused",
+                    first_name="Other",
+                    last_name="Person",
+                    role=UserRole.ATTENDEE.value,
+                ),
+            ]
+        )
+        session.commit()
+        repository = SQLAlchemyUserRepository(session)
+
+        users, total = repository.list_users("example", page=2, page_size=1)
+
+        assert total == 3
+        assert len(users) == 1
+        assert users[0].email == "grace@example.test"
+        assert users[0].role is UserRole.ORGANIZER
+        assert not hasattr(users[0], "password_hash")
+    engine.dispose()

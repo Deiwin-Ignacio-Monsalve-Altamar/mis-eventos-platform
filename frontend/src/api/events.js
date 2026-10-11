@@ -34,6 +34,17 @@ export async function getMyEventDashboard() {
   return response.summary
 }
 
+/** Read owner-scoped event, session, and active registration aggregates. */
+export async function getMyEventMetrics() {
+  return request('/events/mine/metrics')
+}
+
+/** Get upcoming public events with backend-verified availability for this user. */
+export async function getRecommendedEvents() {
+  const response = await request('/events/recommendations/me')
+  return response.recommendations
+}
+
 /** Retrieve one event by its path identifier. */
 export async function getEvent(eventId) {
   const response = await request(`/events/${encodeURIComponent(eventId)}`)

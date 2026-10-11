@@ -40,6 +40,22 @@ class EventRepository(Protocol):
         """Return aggregate status and date counts for one event creator."""
         ...
 
+    def event_activity_by_creator(
+        self, creator_id: int, now: datetime, limit: int
+    ) -> list[dict[str, object]]:
+        """Return bounded event, session, and active registration metrics for an owner."""
+        ...
+
+    def active_registration_count_by_creator(self, creator_id: int) -> int:
+        """Return active registrations across all events created by an owner."""
+        ...
+
+    def recommendations_for_user(
+        self, user_id: int, now: datetime, limit: int
+    ) -> list[tuple[EventRecord, int]]:
+        """Return upcoming published events with room and no active user enrollment."""
+        ...
+
     def save(
         self,
         event: EventRecord,

@@ -2,6 +2,7 @@
 
 from flask import current_app
 
+from app.application.administration.analytics_service import AdminAnalyticsService
 from app.application.administration.service import AdministrationService
 from app.application.auth.service import AuthService
 from app.application.events.service import EventService
@@ -11,6 +12,9 @@ from app.application.sessions.attendees import SessionAttendeeService
 from app.application.sessions.service import SessionService
 from app.extensions import db
 from app.infrastructure.health.repository import HealthRepository
+from app.infrastructure.repositories.sqlalchemy_admin_analytics_repository import (
+    SQLAlchemyAdminAnalyticsRepository,
+)
 from app.infrastructure.repositories.sqlalchemy_event_registration_repository import (
     SQLAlchemyEventRegistrationRepository,
 )
@@ -47,6 +51,11 @@ def get_auth_service() -> AuthService:
 def get_administration_service() -> AdministrationService:
     """Build role-administration use cases from the active database session."""
     return AdministrationService(user_repository=SQLAlchemyUserRepository(db.session))
+
+
+def get_admin_analytics_service() -> AdminAnalyticsService:
+    """Build platform analytics using request-scoped aggregate persistence."""
+    return AdminAnalyticsService(SQLAlchemyAdminAnalyticsRepository(db.session))
 
 
 def get_event_service() -> EventService:

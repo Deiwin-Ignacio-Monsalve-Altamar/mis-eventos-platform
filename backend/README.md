@@ -148,6 +148,21 @@ administrator-only, cannot target the acting administrator, promotes only an
 attendee, and safely returns the existing organizer when repeated. It cannot
 assign `ADMIN`.
 
+Administrators can retrieve a minimal searchable directory with
+`GET /api/v1/admin/users?page=1&page_size=20&q=...`. The optional `q` filter
+matches first name, last name, full name, or email. Page size is limited to
+100, and results include only `id`, `email`, `first_name`, `last_name`, and
+`role`.
+
+The administrator profile uses `GET /api/v1/admin/dashboard` for aggregate
+role, event, registration, six-month activity, and organizer event/enrollment
+counts. The response contains aggregates only and is restricted to `ADMIN`.
+Organizer profiles use `GET /api/v1/events/mine/metrics`; its query scope is
+always the authenticated creator, even for an administrator. Attendee profiles
+can request `GET /api/v1/events/recommendations/me`, which returns up to eight
+published future events with confirmed free seats and excludes events where
+the caller already has an active registration.
+
 #### Initialize the first administrator
 
 Apply migrations and create/register the intended account first. Then run the

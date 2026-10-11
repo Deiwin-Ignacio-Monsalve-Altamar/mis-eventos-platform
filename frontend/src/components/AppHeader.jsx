@@ -4,6 +4,12 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, NavLink, useLocation } from 'react-router-dom'
 import LogoutButton from './LogoutButton.jsx'
 
+const ROLE_LABELS = {
+  ADMIN: 'Administrador',
+  ORGANIZER: 'Organizador',
+  ATTENDEE: 'Asistente',
+}
+
 /** Show clear destinations while preserving the current authentication state. */
 export default function AppHeader({ auth }) {
   const isAuthenticated = auth.status === 'authenticated' && Boolean(auth.user)
@@ -47,6 +53,7 @@ export default function AppHeader({ auth }) {
         <NavLink className={pathname === '/' ? 'active' : undefined} end to="/events">Eventos</NavLink>
         <NavLink to="/events/new">Crear evento</NavLink>
         {isAuthenticated && <NavLink to="/my-events">Mis eventos</NavLink>}
+        {isAuthenticated && auth.user.role === 'ADMIN' && <NavLink to="/admin/users">Administración</NavLink>}
       </nav>
       <div className="header-actions">
         {isAuthenticated ? (
@@ -64,7 +71,14 @@ export default function AppHeader({ auth }) {
             </button>
             {isUserMenuOpen && (
               <nav aria-label="Menú de usuario" className="user-menu-popover" id="user-navigation-menu">
+                <div className="user-menu-identity">
+                  <span>{auth.user.first_name} {auth.user.last_name}</span>
+                  <span className={`user-role-badge user-role-${String(auth.user.role || '').toLowerCase()}`}>
+                    {ROLE_LABELS[auth.user.role] || 'Usuario'} <small>{auth.user.role || ''}</small>
+                  </span>
+                </div>
                 <Link className="user-menu-item" onClick={() => setIsUserMenuOpen(false)} to="/profile">Perfil</Link>
+                {auth.user.role === 'ADMIN' && <Link className="user-menu-item" onClick={() => setIsUserMenuOpen(false)} to="/admin/users">Administrar usuarios</Link>}
                 <button aria-disabled="true" className="user-menu-item user-menu-disabled" disabled type="button">
                   <span>Ajustes</span><small>Próximamente</small>
                 </button>

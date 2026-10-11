@@ -139,6 +139,96 @@ class SQLAlchemyEventRepository:
         row = self._session.execute(statement).one()
         return {key: int(value or 0) for key, value in row._mapping.items()}
 
+    def event_activity_by_creator(
+        self, creator_id: int, now: datetime, limit: int
+    ) -> list[dict[str, object]]:
+        """Aggregate event enrollment and session counts within the owner's scope."""
+        active_registrations = (
+            select(func.count(Registration.id))
+            .where(
+                Registration.event_id == Event.id,
+                Registration.status == "registered",
+            )
+            .scalar_subquery()
+        )
+        session_count = (
+            select(func.count(EventSession.id))
+            .where(EventSession.event_id == Event.id)
+            .scalar_subquery()
+        )
+        rows = self._session.execute(
+            select(Event, active_registrations, session_count)
+            .where(Event.created_by_id == creator_id)
+            .order_by(
+                case((Event.starts_at > now, 0), else_=1),
+                Event.starts_at.asc(),
+                Event.id.asc(),
+            )
+            .limit(limit)
+        )
+        return [
+            {
+                "event": self._to_record(event),
+                "active_registrations": int(registration_count),
+                "session_count": int(sessions),
+                "available_seats": max(event.capacity - int(registration_count), 0),
+            }
+            for event, registration_count, sessions in rows
+        ]
+
+    def active_registration_count_by_creator(self, creator_id: int) -> int:
+        """Count active event registrations for the owner's complete event set."""
+        return int(
+            self._session.scalar(
+                select(func.count(Registration.id))
+                .join(Event, Registration.event_id == Event.id)
+                .where(
+                    Event.created_by_id == creator_id,
+                    Registration.status == "registered",
+                )
+            )
+            or 0
+        )
+
+    def recommendations_for_user(
+        self, user_id: int, now: datetime, limit: int
+    ) -> list[tuple[EventRecord, int]]:
+        """Select available published events and exclude existing active enrollments."""
+        registration_count = (
+            select(func.count(Registration.id))
+            .where(
+                Registration.event_id == Event.id,
+                Registration.status == "registered",
+            )
+            .scalar_subquery()
+        )
+        already_registered = (
+            select(Registration.id)
+            .where(
+                Registration.event_id == Event.id,
+                Registration.user_id == user_id,
+                Registration.status == "registered",
+            )
+            .exists()
+        )
+        rows = self._session.execute(
+            select(
+                Event, (Event.capacity - registration_count).label("available_seats")
+            )
+            .where(
+                Event.status == "published",
+                Event.starts_at > now,
+                Event.capacity > registration_count,
+                ~already_registered,
+            )
+            .order_by(Event.starts_at.asc(), Event.id.asc())
+            .limit(limit)
+        )
+        return [
+            (self._to_record(event), int(available_seats))
+            for event, available_seats in rows
+        ]
+
     def save(
         self,
         event: EventRecord,

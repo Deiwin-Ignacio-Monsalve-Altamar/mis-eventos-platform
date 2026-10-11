@@ -3,6 +3,7 @@
 from typing import Protocol
 
 from app.domain.entities.user_account import UserAccount
+from app.domain.entities.user_summary import UserSummary
 
 
 class UserRepository(Protocol):
@@ -26,4 +27,10 @@ class UserRepository(Protocol):
 
     def bootstrap_first_admin(self, email: str) -> UserAccount:
         """Initialize the first administrator if none exists."""
+        ...
+
+    def list_users(
+        self, query: str | None, page: int, page_size: int
+    ) -> tuple[list[UserSummary], int]:
+        """Return one stable page of minimal user-directory fields."""
         ...

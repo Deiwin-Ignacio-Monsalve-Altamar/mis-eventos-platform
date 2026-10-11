@@ -1,6 +1,6 @@
 """Persist domain user accounts with the application's SQLAlchemy session."""
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -11,6 +11,7 @@ from app.core.exceptions import (
 )
 from app.domain.entities.user_account import UserAccount
 from app.domain.entities.user_role import UserRole
+from app.domain.entities.user_summary import UserSummary
 from app.infrastructure.database.models import User
 
 
@@ -115,6 +116,42 @@ class SQLAlchemyUserRepository:
             self._session.rollback()
             raise
         return self._to_account(user)
+
+    def list_users(
+        self, query: str | None, page: int, page_size: int
+    ) -> tuple[list[UserSummary], int]:
+        """Search users by name or email and select only public directory fields."""
+        filters = []
+        if query:
+            full_name = User.first_name + " " + User.last_name
+            filters.append(
+                or_(
+                    User.first_name.icontains(query, autoescape=True),
+                    User.last_name.icontains(query, autoescape=True),
+                    User.email.icontains(query, autoescape=True),
+                    full_name.icontains(query, autoescape=True),
+                )
+            )
+        total = self._session.scalar(select(func.count(User.id)).where(*filters)) or 0
+        statement = (
+            select(User.id, User.email, User.first_name, User.last_name, User.role)
+            .where(*filters)
+            .order_by(User.id.asc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        )
+        rows = self._session.execute(statement).all()
+        users = [
+            UserSummary(
+                id=row.id,
+                email=row.email,
+                first_name=row.first_name,
+                last_name=row.last_name,
+                role=UserRole(row.role),
+            )
+            for row in rows
+        ]
+        return users, total
 
     @staticmethod
     def _is_email_conflict(error: IntegrityError) -> bool:
