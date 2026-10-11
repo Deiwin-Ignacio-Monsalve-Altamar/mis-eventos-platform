@@ -6,6 +6,12 @@ import re
 import sys
 from datetime import UTC, datetime
 
+from app.settings import (
+    DEFAULT_APP_ENVIRONMENT,
+    DEFAULT_ERROR_APP_VERSION,
+    DEFAULT_SERVICE_NAME,
+)
+
 SENSITIVE_VALUE_PATTERN = re.compile(
     r"(?i)([\"']?(?:password|token|secret|authorization)[\"']?\s*[:=]\s*[\"']?)([^\"'\s,;}]+)([\"']?)"
 )
@@ -28,9 +34,9 @@ class JsonFormatter(logging.Formatter):
         payload = {
             "timestamp": datetime.fromtimestamp(record.created, UTC).isoformat(),
             "severity": record.levelname,
-            "service": getattr(record, "service", "mis-eventos-backend"),
-            "environment": getattr(record, "environment", "local"),
-            "version": getattr(record, "version", "unknown"),
+            "service": getattr(record, "service", DEFAULT_SERVICE_NAME),
+            "environment": getattr(record, "environment", DEFAULT_APP_ENVIRONMENT),
+            "version": getattr(record, "version", DEFAULT_ERROR_APP_VERSION),
             "message": redact_sensitive_values(record.getMessage()),
         }
         for key in (
@@ -74,7 +80,7 @@ def configure_logging(level: str) -> None:
     if normalized_level != level.upper():
         logger.warning(
             "Invalid log level; falling back to INFO.",
-            extra={"stage": "configuration", "service": "mis-eventos-backend"},
+            extra={"stage": "configuration", "service": DEFAULT_SERVICE_NAME},
         )
 
 

@@ -10,11 +10,13 @@ from app.domain.repositories.event_registration_repository import (
     EventRegistrationRepository,
 )
 from app.observability.metrics import increment_business_metric
+from app.settings import (
+    DEFAULT_PAGE,
+    DEFAULT_PAGE_SIZE,
+    MAXIMUM_PAGE_NUMBER,
+    MAXIMUM_PAGE_SIZE,
+)
 
-DEFAULT_PAGE = 1
-DEFAULT_PAGE_SIZE = 20
-MAXIMUM_PAGE_SIZE = 100
-MAXIMUM_PAGE_NUMBER = 1_000_000
 REGISTRATION_STATUSES = {"registered", "cancelled"}
 REGISTRATION_PERIODS = {"upcoming", "active", "past"}
 

@@ -2,10 +2,12 @@
 
 import os
 
+from app.settings import DEFAULT_PORT, PORT_ENV
+
 
 def _port() -> int:
     """Return the valid listening port supplied by the runtime, or 5000 locally."""
-    raw_port = os.getenv("PORT", "5000")
+    raw_port = os.getenv(PORT_ENV, str(DEFAULT_PORT))
     try:
         port = int(raw_port)
     except ValueError as error:

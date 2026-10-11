@@ -22,31 +22,28 @@ from app.docs.swagger import init_swagger
 from app.extensions import db
 from app.observability.logging import configure_logging, get_logger
 from app.observability.metrics import ApplicationMetrics
+from app.settings import DEFAULT_LOG_LEVEL, LOG_LEVEL_ENV
 
 logger = get_logger("lifecycle")
 EXCLUDED_METRIC_ROUTES = {"/metrics", "/api/v1/health", "/api/v1/live", "/api/v1/ready"}
 
 
 def create_app() -> Flask:
-    configure_logging(os.getenv("LOG_LEVEL", "INFO"))
-    logger.info(
-        "Backend application initialization started.",
-        extra={
-            "service": os.getenv("SERVICE_NAME", "mis-eventos-backend"),
-            "environment": os.getenv("APP_ENVIRONMENT", "local"),
-            "version": os.getenv("APP_VERSION", "dev"),
-            "stage": "configuration",
-        },
-    )
     app = Flask(__name__)
     try:
         app.config.update(load_config())
     except Exception:
+        configure_logging(os.getenv(LOG_LEVEL_ENV, DEFAULT_LOG_LEVEL))
         logger.exception(
             "Backend configuration validation failed.",
             extra={"stage": "configuration"},
         )
         raise
+    configure_logging(app.config["LOG_LEVEL"])
+    logger.info(
+        "Backend application initialization started.",
+        extra={**_log_context(app), "stage": "configuration"},
+    )
     frontend_origin = app.config["FRONTEND_ORIGIN"]
     if frontend_origin:
         CORS(

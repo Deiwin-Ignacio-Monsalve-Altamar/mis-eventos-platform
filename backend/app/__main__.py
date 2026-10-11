@@ -2,6 +2,7 @@ import os
 
 from app.main import create_app
 from app.observability.logging import get_logger
+from app.settings import DEFAULT_PORT, PORT_ENV
 
 app = create_app()
 logger = get_logger("lifecycle")
@@ -18,7 +19,7 @@ if __name__ == "__main__":
         },
     )
     try:
-        port = int(os.getenv("PORT", "5000"))
+        port = int(os.getenv(PORT_ENV, str(DEFAULT_PORT)))
         app.run(host="0.0.0.0", port=port)
     except KeyboardInterrupt:
         logger.info("Backend shutdown requested.", extra={"stage": "shutdown"})

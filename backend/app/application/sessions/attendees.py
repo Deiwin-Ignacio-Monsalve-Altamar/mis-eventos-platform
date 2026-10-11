@@ -10,11 +10,12 @@ from app.domain.entities.session_attendee import (
 from app.domain.repositories.session_attendee_repository import (
     SessionAttendeeRepository,
 )
-
-DEFAULT_PAGE = 1
-DEFAULT_PAGE_SIZE = 20
-MAXIMUM_PAGE_SIZE = 100
-MAXIMUM_PAGE_NUMBER = 1_000_000
+from app.settings import (
+    DEFAULT_PAGE,
+    DEFAULT_PAGE_SIZE,
+    MAXIMUM_PAGE_NUMBER,
+    MAXIMUM_PAGE_SIZE,
+)
 
 
 class SessionAttendeeService:

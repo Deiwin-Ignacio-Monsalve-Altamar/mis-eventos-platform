@@ -8,13 +8,15 @@ from app.core.exceptions import AuthorizationError, NotFoundError, ValidationErr
 from app.domain.entities.event_record import EventRecord
 from app.domain.repositories.event_repository import EventRepository
 from app.observability.metrics import increment_business_metric
+from app.settings import (
+    DEFAULT_PAGE,
+    DEFAULT_PAGE_SIZE,
+    MAXIMUM_PAGE_NUMBER,
+    MAXIMUM_PAGE_SIZE,
+    MAXIMUM_SEARCH_LENGTH,
+)
 
 EVENT_STATUSES = {"draft", "published", "cancelled", "completed"}
-DEFAULT_PAGE = 1
-DEFAULT_PAGE_SIZE = 20
-MAXIMUM_PAGE_SIZE = 100
-MAXIMUM_PAGE_NUMBER = 1_000_000
-MAXIMUM_SEARCH_LENGTH = 200
 EDITABLE_FIELDS = {
     "title",
     "description",

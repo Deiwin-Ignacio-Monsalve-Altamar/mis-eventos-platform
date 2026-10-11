@@ -6,12 +6,13 @@ from app.core.exceptions import AuthorizationError, ValidationError
 from app.domain.entities.user_account import UserAccount
 from app.domain.entities.user_role import UserRole
 from app.domain.repositories.user_repository import UserRepository
-
-DEFAULT_PAGE = 1
-DEFAULT_PAGE_SIZE = 20
-MAXIMUM_PAGE_SIZE = 100
-MAXIMUM_PAGE_NUMBER = 1_000_000
-MAXIMUM_SEARCH_LENGTH = 200
+from app.settings import (
+    DEFAULT_PAGE,
+    DEFAULT_PAGE_SIZE,
+    MAXIMUM_PAGE_NUMBER,
+    MAXIMUM_PAGE_SIZE,
+    MAXIMUM_SEARCH_LENGTH,
+)
 
 
 class AdministrationService:

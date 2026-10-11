@@ -7,6 +7,11 @@ from werkzeug.exceptions import HTTPException
 
 from app.api.responses import error_response
 from app.observability.logging import get_logger
+from app.settings import (
+    DEFAULT_APP_ENVIRONMENT,
+    DEFAULT_ERROR_APP_VERSION,
+    DEFAULT_SERVICE_NAME,
+)
 
 HTTP_ERROR_CODES = {
     HTTPStatus.BAD_REQUEST: "bad_request",
@@ -36,10 +41,14 @@ def register_error_handlers(app: Flask) -> None:
                 "HTTP server error.",
                 extra={
                     "service": current_app.config.get(
-                        "SERVICE_NAME", "mis-eventos-backend"
+                        "SERVICE_NAME", DEFAULT_SERVICE_NAME
                     ),
-                    "environment": current_app.config.get("APP_ENVIRONMENT", "local"),
-                    "version": current_app.config.get("APP_VERSION", "unknown"),
+                    "environment": current_app.config.get(
+                        "APP_ENVIRONMENT", DEFAULT_APP_ENVIRONMENT
+                    ),
+                    "version": current_app.config.get(
+                        "APP_VERSION", DEFAULT_ERROR_APP_VERSION
+                    ),
                     "request_id": getattr(g, "request_id", None),
                     "method": request.method,
                     "route": request.url_rule.rule if request.url_rule else "unmatched",
@@ -69,11 +78,13 @@ def register_error_handlers(app: Flask) -> None:
         get_logger("http").exception(
             "Unhandled request exception.",
             extra={
-                "service": current_app.config.get(
-                    "SERVICE_NAME", "mis-eventos-backend"
+                "service": current_app.config.get("SERVICE_NAME", DEFAULT_SERVICE_NAME),
+                "environment": current_app.config.get(
+                    "APP_ENVIRONMENT", DEFAULT_APP_ENVIRONMENT
                 ),
-                "environment": current_app.config.get("APP_ENVIRONMENT", "local"),
-                "version": current_app.config.get("APP_VERSION", "unknown"),
+                "version": current_app.config.get(
+                    "APP_VERSION", DEFAULT_ERROR_APP_VERSION
+                ),
                 "request_id": getattr(g, "request_id", None),
                 "method": request.method,
                 "route": request.url_rule.rule if request.url_rule else "unmatched",
