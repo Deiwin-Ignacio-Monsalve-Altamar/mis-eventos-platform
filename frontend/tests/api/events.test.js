@@ -2,7 +2,7 @@
 
 import assert from 'node:assert/strict'
 import { afterEach, test } from 'node:test'
-import { createEvent, createEventSession, deleteEvent, deleteEventSession, getEvent, getEventCapacity, getMyEvent, getMyEventDashboard, getSessionOccupancy, listEventSessions, listEvents, listMyEvents, updateEvent, updateEventSession } from '../../src/api/events.js'
+import { createEvent, createEventSession, deleteEvent, deleteEventSession, getEvent, getEventCapacity, getMyEvent, getMyEventDashboard, getMyEventMetrics, getRecommendedEvents, getSessionOccupancy, listEventSessions, listEvents, listMyEvents, updateEvent, updateEventSession } from '../../src/api/events.js'
 import { cancelMyEventRegistration, findMyEventRegistration, getMyRegistrationSummary, listMyRegistrations, registerForEvent } from '../../src/api/registrations.js'
 
 const originalFetch = globalThis.fetch
@@ -42,6 +42,23 @@ test('personal event queries use authenticated owner routes and supported filter
     '/api/v1/events/mine?page=2&page_size=9&q=meetup&status=draft',
     '/api/v1/events/mine/42',
     '/api/v1/events/mine/summary',
+  ])
+})
+
+test('role profiles use owner metrics and server-verified attendee recommendations', async () => {
+  const urls = []
+  globalThis.fetch = async (url, options) => {
+    urls.push({ url, credentials: options.credentials })
+    return { ok: true, status: 200, json: async () => url.includes('/recommendations')
+      ? { recommendations: [{ event: { id: 9 }, available_seats: 2 }] }
+      : { summary: { total_events: 1 }, events: [] } }
+  }
+
+  assert.equal((await getMyEventMetrics()).summary.total_events, 1)
+  assert.deepEqual(await getRecommendedEvents(), [{ event: { id: 9 }, available_seats: 2 }])
+  assert.deepEqual(urls, [
+    { url: '/api/v1/events/mine/metrics', credentials: 'include' },
+    { url: '/api/v1/events/recommendations/me', credentials: 'include' },
   ])
 })
 

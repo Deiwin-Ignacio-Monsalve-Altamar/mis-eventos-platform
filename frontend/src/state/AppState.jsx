@@ -58,6 +58,10 @@ export function AppProvider({ children }) {
 
   const signUp = useCallback((account) => registerAccount(account), [])
 
+  const clearAuthentication = useCallback(() => {
+    dispatch({ type: 'auth/anonymous' })
+  }, [])
+
   const signOut = useCallback(async (onSuccess) => {
     await logout()
     await onSuccess?.()
@@ -152,8 +156,8 @@ export function AppProvider({ children }) {
   }, [])
 
   const value = useMemo(
-    () => ({ state, signIn, signUp, signOut, refreshEvents, loadEvent, loadEventSessions, submitEvent, saveEventChanges, removeEvent }),
-    [state, signIn, signUp, signOut, refreshEvents, loadEvent, loadEventSessions, submitEvent, saveEventChanges, removeEvent],
+    () => ({ state, signIn, signUp, signOut, clearAuthentication, refreshEvents, loadEvent, loadEventSessions, submitEvent, saveEventChanges, removeEvent }),
+    [state, signIn, signUp, signOut, clearAuthentication, refreshEvents, loadEvent, loadEventSessions, submitEvent, saveEventChanges, removeEvent],
   )
 
   return <AppStateContext.Provider value={value}>{children}</AppStateContext.Provider>

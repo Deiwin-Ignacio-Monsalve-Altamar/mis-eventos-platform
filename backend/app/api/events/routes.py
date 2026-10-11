@@ -96,6 +96,28 @@ def my_event_dashboard():
     ), HTTPStatus.OK
 
 
+@event_bp.get("/events/mine/metrics")
+@token_required
+@roles_required(UserRole.ORGANIZER, UserRole.ADMIN)
+def my_event_metrics():
+    """Return event, session, and active enrollment metrics for the current creator."""
+    dashboard = get_event_service().owner_dashboard(g.current_user.id)
+    return jsonify(
+        {
+            "summary": dashboard["summary"],
+            "events": [
+                {
+                    **_serialize_event(item["event"]),
+                    "active_registrations": item["active_registrations"],
+                    "session_count": item["session_count"],
+                    "available_seats": item["available_seats"],
+                }
+                for item in dashboard["events"]
+            ],
+        }
+    ), HTTPStatus.OK
+
+
 @event_bp.get("/events/mine/<int:event_id>")
 @token_required
 @roles_required(UserRole.ORGANIZER, UserRole.ADMIN)
@@ -247,6 +269,24 @@ def event_registration_capacity(event_id: int):
     except NotFoundError as error:
         return error_response("not_found", str(error), HTTPStatus.NOT_FOUND)
     return jsonify(capacity), HTTPStatus.OK
+
+
+@event_bp.get("/events/recommendations/me")
+@token_required
+def recommended_events_for_user():
+    """Return upcoming published events with verified open seats for this user."""
+    recommendations = get_event_service().recommendations_for_user(g.current_user.id)
+    return jsonify(
+        {
+            "recommendations": [
+                {
+                    "event": _serialize_event(item["event"]),
+                    "available_seats": item["available_seats"],
+                }
+                for item in recommendations
+            ]
+        }
+    ), HTTPStatus.OK
 
 
 @event_bp.get("/registrations/me/summary")

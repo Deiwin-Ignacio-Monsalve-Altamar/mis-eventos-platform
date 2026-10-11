@@ -107,3 +107,112 @@ def test_promotion_maps_already_admin_target_to_conflict(admin_client):
 
     assert response.status_code == HTTPStatus.CONFLICT
     assert response.json["error"]["code"] == "role_conflict"
+
+
+def test_admin_can_list_users_with_pagination_and_search(admin_client):
+    """Expose only requested directory results and their pagination metadata."""
+    from app.application.dto.user_page import UserPage
+    from app.domain.entities.user_summary import UserSummary
+
+    client, service, _ = admin_client
+    summary = UserSummary(8, "person@example.test", "Pat", "Example", UserRole.ATTENDEE)
+    service.list_users.return_value = UserPage((summary,), 2, 10, 11)
+
+    response = client.get("/api/v1/admin/users?page=2&page_size=10&q=Pat")
+
+    assert response.status_code == HTTPStatus.OK
+    assert response.json == {
+        "users": [
+            {
+                "id": 8,
+                "email": "person@example.test",
+                "first_name": "Pat",
+                "last_name": "Example",
+                "role": "ATTENDEE",
+            }
+        ],
+        "pagination": {"page": 2, "page_size": 10, "total": 11, "total_pages": 2},
+    }
+    service.list_users.assert_called_once_with("2", "10", "Pat")
+
+
+@pytest.mark.parametrize(
+    ("role", "expected_status"),
+    [
+        (UserRole.ATTENDEE, HTTPStatus.FORBIDDEN),
+        (UserRole.ORGANIZER, HTTPStatus.FORBIDDEN),
+    ],
+)
+def test_non_admin_cannot_list_users(admin_client, role, expected_status):
+    """Restrict directory access to administrators before service invocation."""
+    client, service, auth = admin_client
+    auth.get_authenticated_user.return_value = replace(ADMIN, role=role)
+
+    response = client.get("/api/v1/admin/users")
+
+    assert response.status_code == expected_status
+    service.list_users.assert_not_called()
+
+
+def test_user_list_maps_invalid_pagination_to_bad_request(admin_client):
+    """Keep malformed directory filters within the established API error shape."""
+    client, service, _ = admin_client
+    service.list_users.side_effect = ValidationError("page must be a positive integer.")
+
+    response = client.get("/api/v1/admin/users?page=0")
+
+    assert response.status_code == HTTPStatus.BAD_REQUEST
+    assert response.json["error"]["code"] == "invalid_request"
+
+
+def test_anonymous_user_cannot_list_users(admin_client):
+    """Require the existing authenticated cookie before role checking."""
+    client, service, _ = admin_client
+    client.delete_cookie("access_token")
+
+    response = client.get("/api/v1/admin/users")
+
+    assert response.status_code == HTTPStatus.UNAUTHORIZED
+    service.list_users.assert_not_called()
+
+
+def test_admin_dashboard_returns_aggregate_service_data(admin_client, monkeypatch):
+    """Expose dashboard aggregates only through the admin route group."""
+    from app.api.admin import routes
+
+    client, _, _ = admin_client
+    analytics = Mock()
+    analytics.dashboard.return_value = {"summary": {"users": {"total": 4}}}
+    monkeypatch.setattr(routes, "get_admin_analytics_service", lambda: analytics)
+
+    response = client.get("/api/v1/admin/dashboard")
+
+    assert response.status_code == HTTPStatus.OK
+    assert response.json == {"dashboard": {"summary": {"users": {"total": 4}}}}
+
+
+@pytest.mark.parametrize("role", [UserRole.ATTENDEE, UserRole.ORGANIZER])
+def test_non_admin_cannot_access_admin_dashboard(admin_client, monkeypatch, role):
+    """Keep aggregate platform metrics behind the authoritative role decorator."""
+    client, _, auth = admin_client
+    auth.get_authenticated_user.return_value = replace(ADMIN, role=role)
+    analytics = Mock()
+    monkeypatch.setattr(routes, "get_admin_analytics_service", lambda: analytics)
+
+    response = client.get("/api/v1/admin/dashboard")
+
+    assert response.status_code == HTTPStatus.FORBIDDEN
+    analytics.dashboard.assert_not_called()
+
+
+def test_anonymous_user_cannot_access_admin_dashboard(admin_client, monkeypatch):
+    """Require a valid authentication cookie before querying global metrics."""
+    client, _, _ = admin_client
+    analytics = Mock()
+    monkeypatch.setattr(routes, "get_admin_analytics_service", lambda: analytics)
+    client.delete_cookie("access_token")
+
+    response = client.get("/api/v1/admin/dashboard")
+
+    assert response.status_code == HTTPStatus.UNAUTHORIZED
+    analytics.dashboard.assert_not_called()

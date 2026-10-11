@@ -1203,6 +1203,14 @@ h2 {
   background: var(--surface);
   box-shadow: 0 16px 36px rgb(35 25 67 / 18%);
 }
+.user-menu-identity { display: grid; gap: 8px; padding: 10px 12px 12px; border-bottom: 1px solid var(--line); color: var(--ink); font-size: .88rem; font-weight: 700; }
+.user-role-badge,
+.profile-role-label { display: inline-flex; width: fit-content; align-items: center; gap: 7px; padding: 5px 9px; border-radius: 999px; background: var(--accent-lavender); color: var(--brand-dark); font-size: .74rem; font-weight: 750; }
+.user-role-badge small,
+.profile-role-label small { color: var(--muted); font-size: .65rem; font-weight: 650; }
+.user-role-admin { background: #f3edff; color: #5731a8; }
+.user-role-organizer { background: #fff1e7; color: #8a4512; }
+.user-role-attendee { background: #e4faf3; color: var(--accent-turquoise-ink); }
 .user-menu-item {
   display: flex;
   width: 100%;
@@ -1472,6 +1480,21 @@ h1, h2 { color: var(--ink); }
 .organizer-event-copy h2 a, .attendance-card-copy h2 a { color: var(--ink); text-decoration: none; }
 .organizer-event-copy h2 a:hover, .attendance-card-copy h2 a:hover { color: var(--brand-dark); text-decoration: underline; text-underline-offset: 3px; }
 .organizer-event-copy p, .attendance-card-copy p { color: var(--muted); }
+.admin-users-search { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; }
+.admin-users-search label { display: grid; gap: 7px; color: var(--ink); font-size: .88rem; font-weight: 650; }
+.admin-users-search input { min-height: 44px; padding: 10px 12px; border: 1px solid #d8d4e5; border-radius: var(--radius-control); background: #fff; color: var(--ink); }
+.admin-user-list { display: grid; gap: 12px; margin-top: 22px; }
+.admin-user-card { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 18px; padding: 18px 20px; border: 1px solid #e5e1ef; border-radius: var(--radius-card); background: var(--surface); box-shadow: var(--shadow-card); }
+.admin-user-identity { min-width: 0; }
+.admin-user-identity h2 { margin: 0 0 4px; font-size: 1.05rem; }
+.admin-user-identity p { margin: 0; color: var(--muted); overflow-wrap: anywhere; }
+.admin-role-badge { width: fit-content; padding: 6px 10px; border-radius: 999px; background: #f0ecfa; color: var(--brand-dark); font-size: .76rem; font-weight: 750; white-space: nowrap; }
+.admin-role-attendee { background: #eaf4f2; color: var(--brand-dark); }
+.admin-role-organizer { background: #fff1e7; color: #8a4512; }
+.admin-role-admin { background: #f1edfb; color: #5e3c99; }
+.admin-access-denied { max-width: 680px; margin: 0 auto; }
+.admin-access-denied h1 { margin-bottom: 12px; }
+.admin-access-denied p { color: var(--muted); }
 .organizer-empty { display: grid; justify-items: start; gap: 14px; padding: 24px; border: 1px solid var(--line); border-radius: var(--radius-card); background: #fff; }
 .attendance-badges { display: flex; flex-wrap: wrap; gap: 8px; }
 .registration-state-registered { background: #e4faf3; color: var(--accent-turquoise-ink); }
@@ -1497,6 +1520,75 @@ h1, h2 { color: var(--ink); }
 .profile-activity .profile-section-heading .button-row { flex-wrap: wrap; }
 .profile-registrations { margin-top: 22px; }
 .registration-details .status-badge { display: inline-block; margin-top: 8px; }
+.role-profile { display: grid; gap: 22px; }
+.role-profile .profile-hero { border: 1px solid #e6def8; border-radius: var(--radius-card); box-shadow: var(--shadow-card); }
+.profile-hero-admin { background: linear-gradient(115deg, #f0eaff, #fff 66%, #fff2f8); }
+.profile-hero-organizer { background: linear-gradient(115deg, #e5faf4, #fff 66%, #fff7db); }
+.profile-hero-attendee { background: linear-gradient(115deg, #f0eaff, #fff 66%, #e8fbf7); }
+.profile-identity h1 { margin-bottom: 6px; }
+.profile-identity .profile-role-label { margin-top: 8px; }
+.profile-chart-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 16px; margin-top: 22px; }
+.profile-chart { min-width: 0; padding: 20px; border: 1px solid #e8e2f5; border-radius: 14px; background: #fbfaff; }
+.profile-chart h3 { margin: 0 0 18px; color: var(--ink); font-size: 1rem; }
+.profile-chart-row { display: grid; grid-template-columns: minmax(74px, 100px) minmax(0, 1fr) 28px; align-items: center; gap: 9px; margin: 11px 0; color: var(--muted); font-size: .78rem; }
+.profile-chart-row > span { overflow-wrap: anywhere; }
+.profile-chart-row strong { color: var(--ink); text-align: right; }
+.profile-chart-track,
+.occupancy-track { height: 10px; overflow: hidden; border-radius: 999px; background: #e9e4f2; }
+.profile-chart-track > span,
+.occupancy-track > span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--brand), var(--accent-pink)); transition: width 260ms ease; }
+.organizer-activity-section,
+.organizer-owned-section { margin-top: 30px; }
+.organizer-activity-section h3,
+.organizer-owned-section h3 { margin: 0 0 8px; }
+.organizer-activity-section > div:first-child > p:last-child { color: var(--muted); }
+.organizer-activity-list { display: grid; gap: 9px; margin-top: 16px; }
+.organizer-activity-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(100px, .35fr) minmax(160px, .5fr); gap: 14px; align-items: center; padding: 14px 16px; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
+.organizer-activity-row span { color: var(--muted); font-size: .86rem; }
+.organizer-event-info { min-width: 0; }
+.organizer-event-info h4 { margin: 6px 0; }
+.organizer-event-info h4 a { color: var(--ink); }
+.organizer-event-info > p { margin: 0 0 9px; color: var(--muted); font-size: .84rem; }
+.organizer-event-stats { display: flex; flex-wrap: wrap; gap: 7px 14px; margin-bottom: 10px; color: var(--muted); font-size: .78rem; }
+.organizer-owned-event { grid-template-columns: 76px minmax(0, 1fr) auto; }
+.occupancy-track { max-width: 420px; height: 8px; }
+.attendee-profile .profile-activity { margin-bottom: 0; }
+.attendee-registration-section { margin-top: 22px; }
+.attendee-registration-section h3 { margin-bottom: 12px; font-size: 1.08rem; }
+.attendee-registration-list { display: grid; gap: 10px; }
+.attendee-registration-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 20px; padding: 18px; border: 1px solid var(--line); border-radius: 14px; background: #fff; }
+.attendee-registration-card h4 { margin: 9px 0 6px; font-size: 1.05rem; }
+.attendee-registration-card h4 a { color: var(--ink); }
+.attendee-registration-card p { margin: 4px 0; color: var(--muted); font-size: .86rem; }
+.attendee-registration-actions { display: grid; justify-items: end; gap: 10px; }
+.recommendations-section { min-width: 0; padding: clamp(22px, 4vw, 34px); border: 1px solid #e5dcf8; border-radius: var(--radius-card); background: linear-gradient(135deg, #fff, #fbf8ff 72%, #fff8fb); box-shadow: var(--shadow-card); }
+.recommendations-section .profile-section-heading { display: flex; align-items: end; justify-content: space-between; gap: 18px; margin-bottom: 18px; }
+.recommendations-section h2 { margin: 0 0 8px; }
+.recommendations-section .profile-section-heading p:last-child { margin: 0; color: var(--muted); }
+.recommendation-controls { display: flex; flex: 0 0 auto; gap: 8px; }
+.recommendation-controls .button { min-width: 44px; padding: 8px 12px; font-size: 1.2rem; }
+.recommendation-rail { display: grid; grid-auto-columns: minmax(250px, 31%); grid-auto-flow: column; gap: 16px; overflow-x: auto; overscroll-behavior-inline: contain; padding: 3px 2px 14px; scroll-behavior: smooth; scroll-snap-type: x mandatory; scrollbar-color: #c9b9ec #f0ecf7; }
+.recommendation-rail:focus-visible { outline: 3px solid var(--brand); outline-offset: 3px; border-radius: 12px; }
+.recommendation-card { display: flex; min-width: 0; flex-direction: column; overflow: hidden; border: 1px solid #e5def1; border-radius: 16px; background: #fff; box-shadow: 0 8px 22px rgb(43 30 76 / 7%); scroll-snap-align: start; transition: transform 180ms ease, box-shadow 180ms ease; }
+.recommendation-card:hover { transform: translateY(-3px); box-shadow: 0 12px 28px rgb(43 30 76 / 12%); }
+.recommendation-card > .event-artwork { min-height: 145px; }
+.recommendation-card-copy { display: flex; flex: 1; flex-direction: column; align-items: flex-start; gap: 9px; padding: 16px; }
+.recommendation-card-copy h3 { margin: 0; font-size: 1.1rem; line-height: 1.35; }
+.recommendation-card-copy h3 a { color: var(--ink); text-decoration: none; }
+.recommendation-card-copy h3 a:hover { color: var(--brand-dark); text-decoration: underline; text-underline-offset: 3px; }
+.recommendation-card-copy > p { margin: 0; color: var(--muted); font-size: .84rem; }
+.recommendation-card-copy .recommendation-description { display: -webkit-box; min-height: 3.9em; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-height: 1.3em; }
+.recommendation-card-copy .text-link { margin-top: auto; }
+.recommendation-status { display: none; }
+.recommendations-empty { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 20px; border: 1px dashed #d9ccee; border-radius: 14px; background: #fff; }
+.recommendations-empty p { margin: 0; color: var(--muted); }
+
+@media (prefers-reduced-motion: reduce) {
+  .profile-chart-track > span,
+  .occupancy-track > span,
+  .recommendation-card { transition: none; }
+  .recommendation-rail { scroll-behavior: auto; }
+}
 
 /* Bound event and session editors to the viewport with an independently scrolling form. */
 .editor-modal {
@@ -1579,9 +1671,18 @@ h1, h2 { color: var(--ink); }
   .profile-activity .profile-section-heading { align-items: flex-start; flex-direction: column; }
   .profile-activity .profile-section-heading .button-row { width: 100%; }
   .profile-activity .profile-section-heading .button { flex: 1 1 100%; }
+  .admin-user-card { grid-template-columns: minmax(0, 1fr) auto; gap: 12px; }
+  .admin-user-card .button { grid-column: 1 / -1; width: 100%; }
+  .admin-users-search { grid-template-columns: 1fr; }
   .profile-owned-event { grid-template-columns: 54px minmax(0, 1fr); }
   .profile-owned-event > .text-link { grid-column: 2; }
   .event-status-chart-row { grid-template-columns: 92px minmax(0, 1fr) 24px; gap: 7px; }
+  .organizer-activity-row { grid-template-columns: 1fr; gap: 7px; }
+  .attendee-registration-card { grid-template-columns: 1fr; gap: 12px; }
+  .attendee-registration-actions { grid-template-columns: 1fr auto; justify-items: start; align-items: center; }
+  .recommendation-rail { grid-auto-columns: minmax(250px, 82vw); }
+  .recommendations-section .profile-section-heading { align-items: flex-start; }
+  .recommendations-empty { align-items: flex-start; flex-direction: column; }
 }
 .event-sessions-section > header .eyebrow { color: var(--accent-pink-ink); }
 .session-item { border-color: #e7e0f4; border-radius: 14px; box-shadow: 0 4px 14px rgb(52 37 102 / 4%); }

@@ -190,6 +190,34 @@ class EventService:
             "status_percentages": percentages,
         }
 
+    def owner_dashboard(
+        self, creator_id: int, now: datetime | None = None
+    ) -> dict[str, object]:
+        """Return owner-only event metrics and a bounded list of managed events."""
+        timestamp = now or datetime.now(UTC)
+        summary = self.dashboard(creator_id, timestamp)
+        events = self._event_repository.event_activity_by_creator(
+            creator_id, timestamp.astimezone(UTC), limit=6
+        )
+        summary["active_registrations"] = (
+            self._event_repository.active_registration_count_by_creator(creator_id)
+        )
+        return {"summary": summary, "events": events}
+
+    def recommendations_for_user(
+        self, user_id: int, now: datetime | None = None
+    ) -> list[dict[str, object]]:
+        """Return available upcoming public events without active enrollment."""
+        timestamp = now or datetime.now(UTC)
+        if timestamp.tzinfo is None or timestamp.utcoffset() is None:
+            raise ValidationError("Recommendation time must be timezone-aware.")
+        return [
+            {"event": event, "available_seats": available_seats}
+            for event, available_seats in self._event_repository.recommendations_for_user(
+                user_id, timestamp.astimezone(UTC), limit=8
+            )
+        ]
+
     @staticmethod
     def _normalize_status_filter(value: object) -> str | None:
         """Validate an optional status filter against the event model enum."""

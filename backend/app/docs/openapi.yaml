@@ -353,6 +353,116 @@ paths:
         "204":
           description: The access-token cookie was expired.
 
+  /admin/users:
+    get:
+      tags: [Administration]
+      summary: List users for administrator role management
+      description: Returns minimal identity fields in a searchable, paginated directory. Requires an administrator.
+      security:
+        - AccessTokenCookie: []
+      parameters:
+        - in: query
+          name: page
+          schema: {type: integer, minimum: 1, maximum: 1000000, default: 1}
+        - in: query
+          name: page_size
+          schema: {type: integer, minimum: 1, maximum: 100, default: 20}
+        - in: query
+          name: q
+          description: Case-insensitive match against first name, last name, full name, or email (up to 200 characters).
+          schema: {type: string, maxLength: 200}
+      responses:
+        "200":
+          description: One page of user summaries.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [users, pagination]
+                properties:
+                  users:
+                    type: array
+                    items: {$ref: "#/components/schemas/User"}
+                  pagination: {$ref: "#/components/schemas/Pagination"}
+        "400":
+          description: Invalid pagination or search query.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+        "401":
+          description: Authentication required.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+        "403":
+          description: Administrator role required.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+
+  /admin/dashboard:
+    get:
+      tags: [Administration]
+      summary: Get aggregate platform metrics
+      description: Returns role, event, registration, monthly activity, and organizer aggregates. Requires an administrator.
+      security:
+        - AccessTokenCookie: []
+      responses:
+        "200":
+          description: Real platform-wide aggregate metrics.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [dashboard]
+                properties:
+                  dashboard:
+                    type: object
+                    required: [summary, event_creation_by_month, registration_activity_by_month, organizer_activity]
+                    properties:
+                      summary:
+                        type: object
+                        description: User role counts, event lifecycle totals, and registration status counts.
+                      event_creation_by_month:
+                        type: array
+                        maxItems: 6
+                        items:
+                          type: object
+                          required: [month, count]
+                          properties:
+                            month: {type: string, pattern: '^\d{4}-\d{2}$'}
+                            count: {type: integer, minimum: 0}
+                      registration_activity_by_month:
+                        type: array
+                        maxItems: 6
+                        items:
+                          type: object
+                          required: [month, count]
+                          properties:
+                            month: {type: string, pattern: '^\d{4}-\d{2}$'}
+                            count: {type: integer, minimum: 0}
+                      organizer_activity:
+                        type: array
+                        maxItems: 10
+                        items:
+                          type: object
+                          required: [user_id, name, event_count, active_registrations]
+                          properties:
+                            user_id: {type: integer}
+                            name: {type: string}
+                            event_count: {type: integer, minimum: 0}
+                            active_registrations: {type: integer, minimum: 0}
+        "401":
+          description: Authentication required.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+        "403":
+          description: Administrator role required.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+
   /admin/users/{user_id}/promote-organizer:
     post:
       tags: [Administration]
@@ -791,6 +901,42 @@ paths:
             application/json:
               schema: {$ref: "#/components/schemas/Error"}
 
+  /events/mine/metrics:
+    get:
+      tags: [Events]
+      summary: Get owner-only event management metrics
+      description: Returns status totals and a bounded set of the authenticated creator's events with session and active registration counts.
+      security:
+        - AccessTokenCookie: []
+      responses:
+        "200":
+          description: Owner-scoped event metrics.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [summary, events]
+                properties:
+                  summary:
+                    type: object
+                    description: Existing owner dashboard counts plus active_registrations.
+                  events:
+                    type: array
+                    maxItems: 6
+                    items:
+                      allOf:
+                        - {$ref: "#/components/schemas/Event"}
+                        - type: object
+                          required: [session_count, active_registrations, available_seats]
+                          properties:
+                            session_count: {type: integer, minimum: 0}
+                            active_registrations: {type: integer, minimum: 0}
+                            available_seats: {type: integer, minimum: 0}
+        "401":
+          description: Authentication required.
+        "403":
+          description: Organizer or administrator role required.
+
   /events/mine/{event_id}:
     get:
       tags: [Events]
@@ -919,6 +1065,37 @@ paths:
                       upcoming: {type: integer, minimum: 0}
                       past: {type: integer, minimum: 0}
                       cancelled: {type: integer, minimum: 0}
+        "401":
+          description: Authentication required.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+
+  /events/recommendations/me:
+    get:
+      tags: [Events]
+      summary: Recommend available upcoming events to the current user
+      description: Returns at most eight published future events with confirmed free capacity, excluding events where the current user has an active registration.
+      security:
+        - AccessTokenCookie: []
+      responses:
+        "200":
+          description: Available upcoming events and verified remaining seats.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [recommendations]
+                properties:
+                  recommendations:
+                    type: array
+                    maxItems: 8
+                    items:
+                      type: object
+                      required: [event, available_seats]
+                      properties:
+                        event: {$ref: "#/components/schemas/Event"}
+                        available_seats: {type: integer, minimum: 1}
         "401":
           description: Authentication required.
           content:

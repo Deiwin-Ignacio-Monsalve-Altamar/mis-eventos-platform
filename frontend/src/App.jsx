@@ -14,6 +14,8 @@ import MyEventsPage from './pages/MyEventsPage.jsx'
 import MyRegistrationsPage from './pages/MyRegistrationsPage.jsx'
 import SiteFooter from './components/SiteFooter.jsx'
 import RequireAuthentication from './components/RequireAuthentication.jsx'
+import RequireRole from './components/RequireRole.jsx'
+import AdminUsersPage from './pages/AdminUsersPage.jsx'
 import './App.css'
 
 /** Render the application provider, shell, and page routes. */
@@ -47,6 +49,7 @@ function ApplicationRoutes() {
           <Route element={<RequireAuthentication><ProfilePage /></RequireAuthentication>} path="/profile" />
           <Route element={<RequireAuthentication><MyEventsPage /></RequireAuthentication>} path="/my-events" />
           <Route element={<RequireAuthentication><MyRegistrationsPage /></RequireAuthentication>} path="/my-registrations" />
+          <Route element={<RequireAuthentication><RequireRole role="ADMIN"><AdminUsersPage /></RequireRole></RequireAuthentication>} path="/admin/users" />
           <Route element={<NotFoundPage />} path="*" />
         </Routes>
       </main>
