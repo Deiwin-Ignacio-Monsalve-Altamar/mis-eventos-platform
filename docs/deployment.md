@@ -10,8 +10,8 @@ assuming a vendor-specific configuration file.
 - Python 3.12 or later and Poetry for the backend.
 - Node.js 22 or later and npm for the frontend.
 - A managed PostgreSQL database with network access from the backend service.
-- A static host that supports SPA fallbacks and a same-origin reverse proxy for
-  `/api/v1/*`, or an equivalent edge routing feature.
+- A static host that supports SPA fallbacks. For separate frontend and API
+  origins, the API must allow the frontend origin and credentialed requests.
 - HTTPS for the public frontend and backend route.
 
 The backend dependency lock is `backend/poetry.lock`; the frontend lock is
@@ -36,7 +36,8 @@ frontend values as build-time variables in the static host.
 | `APP_VERSION` | Backend and frontend | Optional | Release label for telemetry; default `dev`. |
 | `SERVICE_NAME` | Backend | Optional | Service label for logs; default `mis-eventos-backend`. |
 | `LOG_LEVEL` | Backend | Optional | Python logging level; default `INFO`. |
-| `VITE_API_BASE_URL` | Frontend build | Optional | Public API prefix compiled into the bundle; use `/api/v1` for the same-origin proxy. |
+| `FRONTEND_ORIGIN` | Backend | Required for direct cross-origin browser access | Exact public origin of the frontend, such as `https://events.example.com`, with no path or trailing slash. CORS is disabled when this value is empty. |
+| `VITE_API_BASE_URL` | Frontend build | Optional | Public API base compiled into the bundle; use the backend's public URL plus `/api/v1` for separate services, or `/api/v1` when a same-origin proxy exists. |
 | `VITE_APP_ENVIRONMENT` | Frontend build | Optional | Public telemetry label; default `local`. |
 | `VITE_APP_VERSION` | Frontend build | Optional | Public telemetry label; default `dev`. |
 
@@ -50,27 +51,38 @@ From `frontend/`:
 
 ```sh
 npm ci
-VITE_API_BASE_URL=/api/v1 VITE_APP_ENVIRONMENT=production npm run build
+VITE_API_BASE_URL=https://api.example.com/api/v1 VITE_APP_ENVIRONMENT=production npm run build
 ```
+
+Replace `api.example.com` with the backend's public host before building.
 
 Publish the generated `frontend/dist/` directory. Set `VITE_APP_VERSION` in the
 build environment if the deployment pipeline has a release identifier.
 
-Configure the static host in this order:
+For separate frontend and backend services, set `VITE_API_BASE_URL` to the
+backend's public HTTPS URL including `/api/v1`, and set `FRONTEND_ORIGIN` on the
+backend to the frontend's exact public origin. The backend allows credentialed
+CORS only from that origin and only on `/api/v1/*`. `API_PROXY_TARGET` remains a
+Vite development-server setting and does not route production traffic.
 
-1. Proxy `/api/v1/*` to the backend service, preserving the path, HTTP method,
-   request body, `Cookie` request header, and response `Set-Cookie` header.
-   Proxy all API status codes and response headers without rewriting them.
-2. Serve existing assets from `dist/` normally.
-3. For remaining frontend navigation paths, return `/index.html` with a
-   successful status so React Router can render and reload routes such as
-   `/profile` and `/my-events`.
+Configure the static host to serve existing assets normally and rewrite
+remaining frontend navigation paths to `/index.html`, so React Router can
+reload routes such as `/profile` and `/my-events`. Browser API requests go
+directly to the configured backend URL and do not pass through this SPA
+fallback.
 
-Keep the API proxy rule ahead of the SPA fallback so API requests, including
-404 responses, are never answered with the frontend HTML document. The Vite
-`API_PROXY_TARGET` setting only configures the local development server; it
-does not configure this production proxy. No provider-specific rules are
-included until a hosting provider is selected.
+The access cookie remains `HttpOnly`, `Secure` in production, and scoped to
+`/api/v1`. When `FRONTEND_ORIGIN` is configured and Secure cookies are enabled,
+login and logout use `SameSite=None` so the browser can include the cookie on
+cross-site requests. Otherwise they retain `SameSite=Lax`. `SameSite=None`
+requires HTTPS, and browser settings that block third-party cookies can still
+prevent the cookie from being sent. Verify the login response and subsequent
+private request in the target browser before treating cross-origin
+authentication as confirmed.
+
+For a local or custom test origin, set `FRONTEND_ORIGIN` to exactly one origin,
+for example `http://localhost:5173` locally. Never set it to `*` for
+credentialed requests.
 
 ## Configure and start the backend
 
@@ -139,10 +151,10 @@ After deployment, verify from the public frontend origin:
   route returns the React application.
 - `/api/v1/ready` returns success, and an invalid or unavailable database
   causes readiness to fail without exposing the connection string.
-- Registration/login, `GET /api/v1/auth/me`, a protected route, and logout work
-  through the same-origin proxy. In browser developer tools, confirm that the
-  login response's `Set-Cookie` is retained and the browser sends the cookie on
-  the next API request.
+- Verify CORS preflight and allowed-origin behavior. A browser check of login,
+  `GET /api/v1/auth/me`, a protected route, and logout is still required; the
+  current cookie policy may prevent cross-site authentication on separate
+  default Render domains.
 - API errors remain API responses and are not replaced by `index.html`.
 - The frontend bundle contains no private backend environment values.
 

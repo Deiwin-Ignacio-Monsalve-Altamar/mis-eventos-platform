@@ -78,7 +78,7 @@ def login_user():
         max_age=current_app.config["JWT_ACCESS_TOKEN_TTL_SECONDS"],
         httponly=True,
         secure=current_app.config["JWT_COOKIE_SECURE"],
-        samesite="Lax",
+        samesite=_access_token_cookie_samesite(),
         path="/api/v1",
     )
     return response, HTTPStatus.OK
@@ -100,9 +100,18 @@ def logout_user():
         path="/api/v1",
         secure=current_app.config["JWT_COOKIE_SECURE"],
         httponly=True,
-        samesite="Lax",
+        samesite=_access_token_cookie_samesite(),
     )
     return response
+
+
+def _access_token_cookie_samesite() -> str:
+    """Allow configured HTTPS cross-site frontend requests to send the cookie."""
+    if current_app.config.get("FRONTEND_ORIGIN") and current_app.config.get(
+        "JWT_COOKIE_SECURE"
+    ):
+        return "None"
+    return "Lax"
 
 
 def _public_user(account: UserAccount) -> dict[str, int | str]:
