@@ -44,6 +44,7 @@ def load_config() -> dict[str, object]:
         "JWT_SECRET_KEY": os.getenv("JWT_SECRET_KEY"),
         "JWT_ACCESS_TOKEN_TTL_SECONDS": token_ttl,
         "JWT_COOKIE_SECURE": secure_cookie,
+        "FRONTEND_ORIGIN": os.getenv("FRONTEND_ORIGIN", "").strip(),
         "SERVICE_NAME": os.getenv("SERVICE_NAME", "mis-eventos-backend"),
         "APP_ENVIRONMENT": environment,
         "APP_VERSION": os.getenv("APP_VERSION", "dev"),

@@ -6,6 +6,7 @@ import uuid
 from http import HTTPStatus
 
 from flask import Flask, g, jsonify, request
+from flask_cors import CORS
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -44,6 +45,26 @@ def create_app() -> Flask:
             extra={"stage": "configuration"},
         )
         raise
+    frontend_origin = app.config["FRONTEND_ORIGIN"]
+    if frontend_origin:
+        CORS(
+            app,
+            resources={
+                r"/api/v1/*": {
+                    "origins": [frontend_origin],
+                    "methods": [
+                        "GET",
+                        "HEAD",
+                        "POST",
+                        "PATCH",
+                        "DELETE",
+                        "OPTIONS",
+                    ],
+                    "allow_headers": ["Content-Type", "X-Request-ID"],
+                    "supports_credentials": True,
+                }
+            },
+        )
     if (
         not app.config["JWT_SECRET_KEY"]
         or len(app.config["JWT_SECRET_KEY"].encode("utf-8")) < 32
