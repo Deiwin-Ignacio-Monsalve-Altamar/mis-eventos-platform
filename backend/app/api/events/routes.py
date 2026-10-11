@@ -55,7 +55,7 @@ def list_events():
 def get_event(event_id: int):
     """Return a single event or a standard not-found response."""
     try:
-        event = get_event_service().get_by_id(event_id)
+        event = _get_public_event(event_id)
     except NotFoundError as error:
         return error_response("not_found", str(error), HTTPStatus.NOT_FOUND)
 
@@ -265,6 +265,7 @@ def list_my_event_registrations():
 def event_registration_capacity(event_id: int):
     """Return public event capacity using active registrations only."""
     try:
+        _get_public_event(event_id)
         capacity = get_event_registration_service().capacity_for_event(event_id)
     except NotFoundError as error:
         return error_response("not_found", str(error), HTTPStatus.NOT_FOUND)
@@ -378,3 +379,11 @@ def _serialize_event(event: EventRecord) -> dict[str, object]:
         "status": event.status,
         "version": event.version,
     }
+
+
+def _get_public_event(event_id: int) -> EventRecord:
+    """Hide missing and unpublished events from public event endpoints."""
+    event = get_event_service().get_by_id(event_id)
+    if event.status != "published":
+        raise NotFoundError("Event not found.")
+    return event

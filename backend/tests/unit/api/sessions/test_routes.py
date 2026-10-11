@@ -45,6 +45,8 @@ def session_client(monkeypatch):
     app = Flask(__name__)
     service, auth = Mock(), Mock()
     attendee_service = Mock()
+    event_service = Mock()
+    event_service.get_by_id.return_value = Mock(status="published")
     service.create.return_value = RECORD
     service.update.return_value = RECORD
     service.get.return_value = RECORD
@@ -61,6 +63,7 @@ def session_client(monkeypatch):
     attendee_service.get_occupancy.return_value = SessionOccupancy(20, 3, 17)
     auth.get_authenticated_user.return_value = ACCOUNT
     monkeypatch.setattr(routes, "get_session_service", lambda: service)
+    monkeypatch.setattr(routes, "get_event_service", lambda: event_service)
     monkeypatch.setattr(
         routes, "get_session_attendee_service", lambda: attendee_service
     )

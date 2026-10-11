@@ -57,8 +57,8 @@ def test_list_events_builds_escaped_search_and_pagination_statements():
     assert page_statement._limit_clause.value == 10
 
 
-def test_list_events_without_search_uses_unfiltered_count_and_maps_results():
-    """Return mapped records and use no search filter when query is omitted."""
+def test_list_events_without_search_filters_published_and_maps_results():
+    """Return mapped published records and filter count when search is omitted."""
     model = SimpleNamespace(
         id=5,
         title="Mocked event",
@@ -67,7 +67,7 @@ def test_list_events_without_search_uses_unfiltered_count_and_maps_results():
         starts_at=datetime(2030, 1, 1, 10, tzinfo=UTC),
         ends_at=datetime(2030, 1, 1, 11, tzinfo=UTC),
         capacity=25,
-        status="draft",
+        status="published",
         created_by_id=8,
         version=1,
     )
@@ -87,13 +87,17 @@ def test_list_events_without_search_uses_unfiltered_count_and_maps_results():
             starts_at=model.starts_at,
             ends_at=model.ends_at,
             capacity=25,
-            status="draft",
+            status="published",
             created_by_id=8,
         )
     ]
     assert total == 1
-    assert session.scalar.call_args.args[0].whereclause is None
-    assert session.execute.call_args.args[0].whereclause is None
+    count_statement = session.scalar.call_args.args[0]
+    page_statement = session.execute.call_args.args[0]
+    assert "events.status" in str(count_statement.compile())
+    assert "events.status" in str(page_statement.compile())
+    assert "published" in count_statement.compile().params.values()
+    assert "published" in page_statement.compile().params.values()
 
 
 def test_list_by_creator_applies_owner_status_search_and_page_predicates():
