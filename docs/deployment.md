@@ -40,10 +40,24 @@ frontend values as build-time variables in the static host.
 | `VITE_API_BASE_URL` | Frontend build | Optional | Public API base compiled into the bundle; use the backend's public URL plus `/api/v1` for separate services, or `/api/v1` when a same-origin proxy exists. |
 | `VITE_APP_ENVIRONMENT` | Frontend build | Optional | Public telemetry label; default `local`. |
 | `VITE_APP_VERSION` | Frontend build | Optional | Public telemetry label; default `dev`. |
+| `R2_ACCOUNT_ID` | Backend | Required when R2 is used | Cloudflare account identifier used to form the S3 endpoint. |
+| `R2_ACCESS_KEY_ID` | Backend secret | Required when R2 is used | R2 S3 API access key ID; store in Render's private environment settings. |
+| `R2_SECRET_ACCESS_KEY` | Backend secret | Required when R2 is used | R2 S3 API secret access key; store in Render's private environment settings. |
+| `R2_BUCKET_NAME` | Backend | Required when R2 is used | Existing bucket the application is authorized to access. The app does not create buckets. |
+| `R2_PUBLIC_BASE_URL` | Backend | Optional | Public base URL for constructing public image URLs when that design is implemented. |
 
 The root `.env.example` contains local development values. Do not copy its
 database credentials into a hosted service. The `VITE_*` values are public and
 must never contain credentials or signing keys.
+
+To prepare R2, [create the bucket and a bucket-scoped S3 API token using
+Cloudflare's setup guide](https://developers.cloudflare.com/r2/get-started/s3/).
+Add the account ID, bucket name, Access Key ID, and Secret Access Key to the
+backend service's environment settings; keep the access keys private. The
+backend uses the account endpoint `https://<ACCOUNT_ID>.r2.cloudflarestorage.com`
+and the S3 region identifier `auto`. R2 settings are optional for application
+startup and are validated only when the client factory is called. No R2
+credentials, buckets, or objects are accessed or provisioned at startup.
 
 ## Build and configure the static frontend
 
