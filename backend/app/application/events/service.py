@@ -98,7 +98,7 @@ class EventService:
 
     def get_by_id(self, event_id: int) -> EventRecord:
         """Return a persisted event or raise when it does not exist."""
-        event = self._event_repository.find_by_id(event_id)
+        event = self._event_repository.find_by_id(event_id, lock_for_read=True)
         if event is None:
             raise NotFoundError("Event not found.")
         return event

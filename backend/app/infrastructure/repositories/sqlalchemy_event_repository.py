@@ -25,9 +25,15 @@ class SQLAlchemyEventRepository:
         """Receive the active SQLAlchemy session used for event persistence."""
         self._session = session
 
-    def find_by_id(self, event_id: int) -> EventRecord | None:
-        """Load and share-lock an event during public child-resource reads."""
-        event = self._session.get(Event, event_id, with_for_update={"read": True})
+    def find_by_id(
+        self, event_id: int, *, lock_for_read: bool = False
+    ) -> EventRecord | None:
+        """Load an event, optionally share-locking it for public child reads."""
+        event = (
+            self._session.get(Event, event_id, with_for_update={"read": True})
+            if lock_for_read
+            else self._session.get(Event, event_id)
+        )
         return self._to_record(event) if event is not None else None
 
     def list_events(
