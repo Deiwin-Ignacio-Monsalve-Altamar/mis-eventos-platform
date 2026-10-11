@@ -2,7 +2,11 @@
 
 from typing import Protocol
 
-from app.domain.entities.session_attendee import SessionAttendee, SessionOccupancy
+from app.domain.entities.session_attendee import (
+    SessionAttendee,
+    SessionOccupancy,
+    SessionRegistrationDetails,
+)
 
 
 class SessionAttendeeRepository(Protocol):
@@ -16,6 +20,11 @@ class SessionAttendeeRepository(Protocol):
 
     def list_attendees(self, event_id: int, session_id: int) -> list[SessionAttendee]:
         """List active attendees for one event-scoped session."""
+
+    def list_registrations_for_user(
+        self, user_id: int, page: int, page_size: int
+    ) -> tuple[list[SessionRegistrationDetails], int]:
+        """Return one user's paginated session enrollments and total count."""
 
     def get_occupancy(self, event_id: int, session_id: int) -> SessionOccupancy:
         """Return the capacity and active occupancy snapshot for a session."""

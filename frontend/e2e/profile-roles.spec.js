@@ -4,7 +4,7 @@ import { expect, test } from '@playwright/test'
 
 const future = '2030-06-10T14:00:00Z'
 
-async function installProfileApi(page, role) {
+async function installProfileApi(page, role, sessionResponse = {}) {
   const user = { id: 7, email: 'alex@example.test', first_name: 'Alex', last_name: 'Rivera', role }
   await page.route('**/api/v1/**', async (route) => {
     const { pathname } = new URL(route.request().url())
@@ -26,6 +26,20 @@ async function installProfileApi(page, role) {
     }) })
     if (path === '/registrations/me/summary') return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ summary: { total: 1, active: 1, upcoming: 1, past: 0, cancelled: 0 } }) })
     if (path === '/registrations/me') return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ registrations: [{ id: 3, status: 'registered', registered_at: future, event: { id: 25, title: 'Attending Conference', description: 'Your registered event.', location: 'Bogotá', starts_at: future, ends_at: '2030-06-10T18:00:00Z', capacity: 10, status: 'published' } }], pagination: { page: 1, page_size: 20, total: 1, total_pages: 1 } }) })
+    if (path === '/session-registrations/me') {
+      if (sessionResponse.delayMs) await new Promise((resolve) => setTimeout(resolve, sessionResponse.delayMs))
+      return route.fulfill({
+        status: sessionResponse.status || 200,
+        contentType: 'application/json',
+        body: JSON.stringify(sessionResponse.payload || {
+          registrations: [
+            { id: 8, status: 'active', registered_at: future, event: { id: 25, title: 'Attending Conference', status: 'published', location: 'Bogotá' }, session: { id: 12, title: 'Opening session', description: 'Welcome and overview.', starts_at: future, ends_at: '2030-06-10T15:00:00Z', capacity: 10 } },
+            { id: 9, status: 'cancelled', registered_at: future, event: { id: 25, title: 'Attending Conference', status: 'published', location: 'Bogotá' }, session: { id: 13, title: 'Workshop', description: null, starts_at: '2030-06-10T16:00:00Z', ends_at: '2030-06-10T17:00:00Z', capacity: 10 } },
+          ],
+          pagination: { page: 1, page_size: 20, total: 2, total_pages: 1 },
+        }),
+      })
+    }
     if (path === '/events/recommendations/me') return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ recommendations: Array.from({ length: 5 }, (_, index) => ({ event: { id: 40 + index, title: `Available Event ${index + 1}`, description: 'An upcoming community event.', location: 'Bogotá', starts_at: future, ends_at: '2030-06-10T18:00:00Z', capacity: 20, status: 'published' }, available_seats: 20 - index })) }) })
     return route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ error: { code: 'not_found', message: `Unexpected ${path}` } }) })
   })
@@ -57,12 +71,17 @@ test('organizer profile presents owned event capacity, sessions, and activity', 
   await expect(menu.getByRole('link', { name: 'Administrar usuarios' })).toHaveCount(0)
 })
 
-test('attendee profile keeps registrations and navigable available-event recommendations', async ({ page }) => {
+test('attendee profile shows event and session registrations with available-event recommendations', async ({ page }) => {
   await installProfileApi(page, 'ATTENDEE')
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/profile')
-  await expect(page.getByRole('heading', { name: 'Mis inscripciones' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Mis inscripciones', exact: true })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Attending Conference' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Mis inscripciones a sesiones' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Opening session' })).toBeVisible()
+  await expect(page.getByText('Inscripción activa')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Workshop' })).toBeVisible()
+  await expect(page.getByText('Inscripción cancelada')).toBeVisible()
   const rail = page.getByRole('list', { name: 'Recomendaciones de eventos' })
   await expect(rail).toBeVisible()
   await expect(rail.getByRole('link', { name: 'Available Event 1' })).toHaveAttribute('href', '/events/40')
@@ -72,4 +91,29 @@ test('attendee profile keeps registrations and navigable available-event recomme
   const menu = page.getByRole('navigation', { name: 'Menú de usuario' })
   await expect(menu.getByText('Asistente')).toBeVisible()
   await expect(menu.getByRole('link', { name: 'Administrar usuarios' })).toHaveCount(0)
+})
+
+test('attendee profile displays session registration loading state', async ({ page }) => {
+  await installProfileApi(page, 'ATTENDEE', { delayMs: 500 })
+  await page.goto('/profile')
+  await expect(page.getByText('Cargando tus sesiones…')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Opening session' })).toBeVisible()
+})
+
+test('attendee profile displays an empty session registration state', async ({ page }) => {
+  await installProfileApi(page, 'ATTENDEE', {
+    payload: { registrations: [], pagination: { page: 1, page_size: 20, total: 0, total_pages: 0 } },
+  })
+  await page.goto('/profile')
+  await expect(page.getByText('Aún no tienes inscripciones a sesiones.')).toBeVisible()
+})
+
+test('attendee profile displays session registration errors and retry action', async ({ page }) => {
+  await installProfileApi(page, 'ATTENDEE', {
+    status: 503,
+    payload: { error: { code: 'service_unavailable', message: 'Unavailable.' } },
+  })
+  await page.goto('/profile')
+  await expect(page.getByRole('alert').getByText('Unavailable.')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Intentar de nuevo' })).toBeVisible()
 })

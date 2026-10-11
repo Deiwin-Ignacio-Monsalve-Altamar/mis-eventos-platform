@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { getRecommendedEvents } from '../api/events.js'
-import { cancelMyEventRegistration, getMyRegistrationSummary, listMyRegistrations } from '../api/registrations.js'
+import { cancelMyEventRegistration, getMyRegistrationSummary, listMyRegistrations, listMySessionRegistrations } from '../api/registrations.js'
 import EventRecommendations from '../components/EventRecommendations.jsx'
 import ProfileHero from '../components/ProfileHero.jsx'
 import ProfileMetricGrid from '../components/ProfileMetricGrid.jsx'
@@ -20,6 +20,7 @@ export default function AttendeeProfile({ user }) {
   const [searchParams, setSearchParams] = useSearchParams()
   const [summaryState, setSummaryState] = useState(null)
   const [registrationState, setRegistrationState] = useState(null)
+  const [sessionRegistrationState, setSessionRegistrationState] = useState(null)
   const [recommendationState, setRecommendationState] = useState(null)
   const [retry, setRetry] = useState(0)
   const [notice, setNotice] = useState('')
@@ -27,11 +28,15 @@ export default function AttendeeProfile({ user }) {
   const [busyEventId, setBusyEventId] = useState(null)
   const cancellationPending = useRef(false)
   const page = Math.max(1, Number(searchParams.get('page')) || 1)
+  const sessionPage = Math.max(1, Number(searchParams.get('sessions_page')) || 1)
   const requestKey = `${user.id}:${page}:${retry}`
+  const sessionRequestKey = `${user.id}:${sessionPage}:${retry}`
   const summary = summaryState?.key === `${user.id}:${retry}` ? summaryState.data : null
   const summaryError = summaryState?.key === `${user.id}:${retry}` ? summaryState.error : null
   const registrations = registrationState?.key === requestKey ? registrationState.data : null
   const registrationError = registrationState?.key === requestKey ? registrationState.error : null
+  const sessionRegistrations = sessionRegistrationState?.key === sessionRequestKey ? sessionRegistrationState.data : null
+  const sessionRegistrationError = sessionRegistrationState?.key === sessionRequestKey ? sessionRegistrationState.error : null
   const recommendations = recommendationState?.key === `${user.id}:${retry}` ? recommendationState.data : null
   const recommendationError = recommendationState?.key === `${user.id}:${retry}` ? recommendationState.error : null
 
@@ -65,6 +70,18 @@ export default function AttendeeProfile({ user }) {
     })
     return () => { active = false }
   }, [clearAuthentication, page, requestKey])
+
+  useEffect(() => {
+    let active = true
+    listMySessionRegistrations({ page: sessionPage, pageSize: PAGE_SIZE }).then((data) => {
+      if (active) setSessionRegistrationState({ key: sessionRequestKey, data, error: null })
+    }).catch((error) => {
+      if (!active) return
+      if (error.status === 401) clearAuthentication()
+      setSessionRegistrationState({ key: sessionRequestKey, data: null, error })
+    })
+    return () => { active = false }
+  }, [clearAuthentication, sessionPage, sessionRequestKey])
 
   async function cancelRegistration(registration) {
     if (cancellationPending.current || registration.status !== 'registered') return
@@ -115,6 +132,31 @@ export default function AttendeeProfile({ user }) {
         {upcoming.length > 0 && <RegistrationSection busyEventId={busyEventId} onCancel={cancelRegistration} registrations={upcoming} title="Próximas experiencias" />}
         {past.length > 0 && <RegistrationSection busyEventId={busyEventId} onCancel={cancelRegistration} registrations={past} title="Historial de inscripciones" />}
         <PaginationControls disabled={!registrations || busyEventId !== null} itemLabel="inscripciones" onPageChange={(nextPage) => { const next = new URLSearchParams(searchParams); next.set('page', String(nextPage)); setSearchParams(next) }} pagination={registrations?.pagination} />
+      </section>
+      <section aria-labelledby="attendee-session-registrations-heading" className="profile-activity">
+        <div className="profile-section-heading"><div><p className="eyebrow">Tu agenda</p><h2 id="attendee-session-registrations-heading">Mis inscripciones a sesiones</h2></div></div>
+        {sessionRegistrationError && <><ErrorMessage error={sessionRegistrationError} /><button className="button button-secondary" onClick={() => setRetry((current) => current + 1)} type="button">Intentar de nuevo</button></>}
+        {!sessionRegistrations && !sessionRegistrationError && <LoadingMessage>Cargando tus sesiones…</LoadingMessage>}
+        {sessionRegistrations?.pagination.total === 0 && <EmptyMessage>Aún no tienes inscripciones a sesiones.</EmptyMessage>}
+        {sessionRegistrations?.registrations.length > 0 && <div className="attendee-registration-list">{sessionRegistrations.registrations.map((registration) => (
+          <article className="attendee-registration-card" key={registration.id}>
+            <div>
+              <span className={`status-badge status-${registration.event.status}`}>{getEventStatusLabel(registration.event.status)}</span>
+              <h3>{registration.session.title}</h3>
+              <p><Link to={`/events/${registration.event.id}`}>{registration.event.title}</Link></p>
+              <p><time dateTime={registration.session.starts_at}>{formatEventDate(registration.session.starts_at, 'medium')}</time> – <time dateTime={registration.session.ends_at}>{formatEventDate(registration.session.ends_at, 'medium')}</time></p>
+              <p>{registration.event.location || 'Lugar por confirmar'}</p>
+              {registration.session.description && <p>{registration.session.description}</p>}
+            </div>
+            <span className={`registration-status status-${registration.status === 'active' ? 'registered' : 'cancelled'}`}>{registration.status === 'active' ? 'Inscripción activa' : 'Inscripción cancelada'}</span>
+          </article>
+        ))}</div>}
+        <PaginationControls
+          disabled={!sessionRegistrations}
+          itemLabel="inscripciones a sesiones"
+          onPageChange={(nextPage) => { const next = new URLSearchParams(searchParams); next.set('sessions_page', String(nextPage)); setSearchParams(next) }}
+          pagination={sessionRegistrations?.pagination}
+        />
       </section>
       <EventRecommendations error={recommendationError} loading={!recommendations && !recommendationError} recommendations={recommendations} />
     </div>

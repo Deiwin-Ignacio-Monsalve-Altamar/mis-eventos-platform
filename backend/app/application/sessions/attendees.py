@@ -1,10 +1,20 @@
 """Coordinate attendee registration, cancellation, roster access, and occupancy."""
 
+from app.application.dto.session_registration_page import SessionRegistrationPage
+from app.application.pagination import positive_integer
 from app.core.exceptions import AuthorizationError, NotFoundError
-from app.domain.entities.session_attendee import SessionAttendee, SessionOccupancy
+from app.domain.entities.session_attendee import (
+    SessionAttendee,
+    SessionOccupancy,
+)
 from app.domain.repositories.session_attendee_repository import (
     SessionAttendeeRepository,
 )
+
+DEFAULT_PAGE = 1
+DEFAULT_PAGE_SIZE = 20
+MAXIMUM_PAGE_SIZE = 100
+MAXIMUM_PAGE_NUMBER = 1_000_000
 
 
 class SessionAttendeeService:
@@ -35,6 +45,26 @@ class SessionAttendeeService:
         self._event_creator(event_id)
         self._require_session(event_id, session_id)
         return self._repository.get_occupancy(event_id, session_id)
+
+    def list_registrations_for_user(
+        self, user_id: int, page: object = None, page_size: object = None
+    ) -> SessionRegistrationPage:
+        """Return one user's session enrollments without accepting client identity."""
+        validated_page = positive_integer(
+            page, "page", DEFAULT_PAGE, MAXIMUM_PAGE_NUMBER
+        )
+        validated_page_size = positive_integer(
+            page_size, "page_size", DEFAULT_PAGE_SIZE, MAXIMUM_PAGE_SIZE
+        )
+        registrations, total = self._repository.list_registrations_for_user(
+            user_id, validated_page, validated_page_size
+        )
+        return SessionRegistrationPage(
+            registrations=tuple(registrations),
+            page=validated_page,
+            page_size=validated_page_size,
+            total=total,
+        )
 
     def enroll(self, event_id: int, session_id: int, user_id: int) -> None:
         """Enroll only the authenticated attendee in an event-scoped session."""

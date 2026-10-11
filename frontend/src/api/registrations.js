@@ -13,6 +13,15 @@ export async function listMyRegistrations({ page = 1, pageSize = 20, status = ''
   return request(`/registrations/me?${parameters.toString()}`)
 }
 
+/** List the authenticated user's session enrollments with their event and schedule. */
+export async function listMySessionRegistrations({ page = 1, pageSize = 20 } = {}) {
+  const parameters = new URLSearchParams({
+    page: String(page),
+    page_size: String(pageSize),
+  })
+  return request(`/session-registrations/me?${parameters.toString()}`)
+}
+
 /** Read activity counts for the authenticated user's own event registrations. */
 export async function getMyRegistrationSummary() {
   const response = await request('/registrations/me/summary')

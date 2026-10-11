@@ -10,7 +10,11 @@ from app.core.exceptions import (
     NotFoundError,
     ValidationError,
 )
-from app.domain.entities.session_attendee import SessionAttendee, SessionOccupancy
+from app.domain.entities.session_attendee import (
+    SessionAttendee,
+    SessionOccupancy,
+    SessionRegistrationDetails,
+)
 from app.infrastructure.database.models import (
     Event,
     EventSession,
@@ -102,6 +106,78 @@ class SQLAlchemySessionAttendeeRepository:
             raise NotFoundError("Session not found for this event.")
         capacity, occupied = result
         return SessionOccupancy(capacity, occupied, max(capacity - occupied, 0))
+
+    def list_registrations_for_user(
+        self, user_id: int, page: int, page_size: int
+    ) -> tuple[list[SessionRegistrationDetails], int]:
+        """Load the caller's session, event, and parent-registration data in one query."""
+        filters = (Registration.user_id == user_id,)
+        total = (
+            self._session.scalar(
+                select(func.count(SessionRegistration.id))
+                .join(
+                    Registration,
+                    Registration.id == SessionRegistration.registration_id,
+                )
+                .where(*filters)
+            )
+            or 0
+        )
+        rows = self._session.execute(
+            select(
+                SessionRegistration.id,
+                SessionRegistration.status,
+                SessionRegistration.registered_at,
+                EventSession.id,
+                EventSession.title,
+                EventSession.description,
+                EventSession.starts_at,
+                EventSession.ends_at,
+                EventSession.capacity,
+                Event.id,
+                Event.title,
+                Event.status,
+                Event.location,
+                Registration.status,
+            )
+            .join(
+                Registration,
+                Registration.id == SessionRegistration.registration_id,
+            )
+            .join(EventSession, EventSession.id == SessionRegistration.session_id)
+            .join(Event, Event.id == EventSession.event_id)
+            .where(*filters)
+            .order_by(
+                EventSession.starts_at.asc(),
+                EventSession.id.asc(),
+                SessionRegistration.id.asc(),
+            )
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        ).all()
+        registrations = [
+            SessionRegistrationDetails(
+                id=row[0],
+                status=(
+                    "active"
+                    if row[1] == "active" and row[13] == "registered"
+                    else "cancelled"
+                ),
+                registered_at=row[2],
+                session_id=row[3],
+                session_title=row[4],
+                session_description=row[5],
+                session_starts_at=row[6],
+                session_ends_at=row[7],
+                session_capacity=row[8],
+                event_id=row[9],
+                event_title=row[10],
+                event_status=row[11],
+                event_location=row[12],
+            )
+            for row in rows
+        ]
+        return registrations, total
 
     def enroll(self, event_id: int, session_id: int, user_id: int) -> None:
         """Lock event, eligibility, and session rows before enrolling transactionally."""

@@ -26,6 +26,60 @@ from app.domain.entities.user_role import UserRole
 session_bp = Blueprint("sessions", __name__)
 
 
+@session_bp.get("/session-registrations/me")
+@token_required
+def list_my_session_registrations():
+    """Return the authenticated user's session enrollments and their event details."""
+    if "user_id" in request.args:
+        return error_response(
+            "invalid_request",
+            "Session registrations can only be listed for the current user.",
+            HTTPStatus.BAD_REQUEST,
+        )
+    try:
+        page = get_session_attendee_service().list_registrations_for_user(
+            g.current_user.id,
+            page=request.args.get("page"),
+            page_size=request.args.get("page_size"),
+        )
+    except ValidationError as error:
+        return error_response("validation_error", str(error), HTTPStatus.BAD_REQUEST)
+
+    total_pages = (page.total + page.page_size - 1) // page.page_size
+    return jsonify(
+        {
+            "registrations": [
+                {
+                    "id": registration.id,
+                    "status": registration.status,
+                    "registered_at": registration.registered_at.isoformat(),
+                    "event": {
+                        "id": registration.event_id,
+                        "title": registration.event_title,
+                        "status": registration.event_status,
+                        "location": registration.event_location,
+                    },
+                    "session": {
+                        "id": registration.session_id,
+                        "title": registration.session_title,
+                        "description": registration.session_description,
+                        "starts_at": registration.session_starts_at.isoformat(),
+                        "ends_at": registration.session_ends_at.isoformat(),
+                        "capacity": registration.session_capacity,
+                    },
+                }
+                for registration in page.registrations
+            ],
+            "pagination": {
+                "page": page.page,
+                "page_size": page.page_size,
+                "total": page.total,
+                "total_pages": total_pages,
+            },
+        }
+    ), HTTPStatus.OK
+
+
 @session_bp.post("/events/<int:event_id>/sessions")
 @token_required
 @roles_required(UserRole.ORGANIZER, UserRole.ADMIN)
