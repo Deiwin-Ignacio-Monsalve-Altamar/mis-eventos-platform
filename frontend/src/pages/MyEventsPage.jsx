@@ -2,13 +2,14 @@
 
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { listMyEvents } from '../api/events.js'
+import { getMyEventMetrics, listEventSessions, listMyEvents } from '../api/events.js'
 import EventCover from '../components/EventCover.jsx'
 import { EmptyMessage, ErrorMessage, LoadingMessage } from '../components/RequestFeedback.jsx'
 import PaginationControls from '../components/PaginationControls.jsx'
+import ProfileMetricGrid from '../components/ProfileMetricGrid.jsx'
 import useAppState from '../state/useAppState.js'
 import { confirmAndDeleteEvent } from '../utils/eventDeletion.js'
-import { formatEventDate, getEventStatusLabel } from '../utils/eventPresentation.js'
+import { formatEventDate, getEventStatusLabel, sortSessions } from '../utils/eventPresentation.js'
 
 const PAGE_SIZE = 9
 
@@ -18,6 +19,8 @@ export default function MyEventsPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const [query, setQuery] = useState(searchParams.get('q') || '')
   const [loadState, setLoadState] = useState(null)
+  const [metricsState, setMetricsState] = useState(null)
+  const [upcomingSessionState, setUpcomingSessionState] = useState({ key: '', items: {} })
   const [actionError, setActionError] = useState(null)
   const [busyEventId, setBusyEventId] = useState(null)
   const [notice, setNotice] = useState('')
@@ -29,6 +32,8 @@ export default function MyEventsPage() {
   const result = loadState?.key === requestKey ? loadState.data : null
   const loadError = loadState?.key === requestKey ? loadState.error : null
   const error = actionError || loadError
+  const metricsByEventId = new Map((metricsState?.data?.events || []).map((event) => [event.id, event]))
+  const hasFilters = Boolean(committedQuery || status)
 
   useEffect(() => {
     let active = true
@@ -37,6 +42,36 @@ export default function MyEventsPage() {
       .catch((requestError) => { if (active) setLoadState({ key: requestKey, data: null, error: requestError }) })
     return () => { active = false }
   }, [page, status, committedQuery, retry, requestKey])
+
+  useEffect(() => {
+    let active = true
+    getMyEventMetrics()
+      .then((data) => { if (active) setMetricsState({ data, error: null }) })
+      .catch((requestError) => { if (active) setMetricsState({ data: null, error: requestError }) })
+    return () => { active = false }
+  }, [retry])
+
+  const publishedEvents = (result?.events || []).filter((event) => event.status === 'published')
+  const upcomingEventKey = publishedEvents.map((event) => event.id).join(',')
+  const upcomingSessions = upcomingSessionState.key === upcomingEventKey ? upcomingSessionState.items : {}
+
+  useEffect(() => {
+    let active = true
+    if (!upcomingEventKey) return () => { active = false }
+    const eventIds = upcomingEventKey.split(',')
+    Promise.all(eventIds.map(async (eventId) => {
+      try {
+        const sessions = await listEventSessions(eventId)
+        const nextSession = sortSessions(sessions).find((session) => Date.parse(session.starts_at) > Date.now()) || null
+        return [eventId, { status: 'success', session: nextSession }]
+      } catch {
+        return [eventId, { status: 'error', session: null }]
+      }
+    })).then((entries) => {
+      if (active) setUpcomingSessionState({ key: upcomingEventKey, items: Object.fromEntries(entries) })
+    })
+    return () => { active = false }
+  }, [upcomingEventKey])
 
   function updateFilters(updates) {
     setActionError(null)
@@ -113,14 +148,33 @@ export default function MyEventsPage() {
         </label>
         <button className="button button-secondary" type="submit">Buscar</button>
       </form>
+      {metricsState?.error && !['authentication_required', 'forbidden'].includes(metricsState.error.code) && (
+        <div className="organizer-metrics-error">
+          <ErrorMessage error={metricsState.error} />
+          <button className="button button-secondary" onClick={() => setRetry((value) => value + 1)} type="button">Volver a cargar indicadores</button>
+        </div>
+      )}
+      {!metricsState?.data && !metricsState?.error && <LoadingMessage>Cargando indicadores de tus eventos…</LoadingMessage>}
+      {metricsState?.data?.summary && (
+        <ProfileMetricGrid label="Indicadores de tus eventos" metrics={[
+          { label: 'Eventos creados', value: metricsState.data.summary.total_events },
+          { label: 'Próximos', value: metricsState.data.summary.upcoming_events },
+          { label: 'En curso', value: metricsState.data.summary.active_events },
+          { label: 'Inscripciones activas', value: metricsState.data.summary.active_registrations },
+        ]} />
+      )}
       {notice && <p className="feedback feedback-success" role="status">{notice}</p>}
       {error && <><ErrorMessage error={error} /><button className="button button-secondary" onClick={() => { setActionError(null); setRetry((value) => value + 1) }} type="button">Intentar de nuevo</button></>}
       {!result && !error && <LoadingMessage>Cargando tus eventos…</LoadingMessage>}
-      {result?.events.length === 0 && <div className="organizer-empty"><EmptyMessage>No encontramos eventos con estos criterios.</EmptyMessage><Link className="button button-primary" to="/events/new">Crear tu primer evento</Link></div>}
+      {result?.events.length === 0 && <div className="organizer-empty">
+        <EmptyMessage>{hasFilters ? 'No encontramos eventos con estos criterios. Prueba otra búsqueda o limpia los filtros.' : 'Aún no has creado eventos.'}</EmptyMessage>
+        {hasFilters && <button className="button button-secondary" onClick={() => { setQuery(''); updateFilters({ q: '', status: '' }) }} type="button">Limpiar filtros</button>}
+        <Link className="button button-primary" to="/events/new">Crear evento</Link>
+      </div>}
       {result?.events.length > 0 && <div className="organizer-events-table-wrap">
         <table className="organizer-events-table">
-          <caption>Eventos propios que puedes consultar y administrar</caption>
-          <thead><tr><th scope="col">Evento</th><th scope="col">Estado</th><th scope="col">Fecha y lugar</th><th scope="col">Acciones</th></tr></thead>
+          <caption>Tus eventos, agenda próxima e indicadores disponibles</caption>
+          <thead><tr><th scope="col">Evento</th><th scope="col">Estado</th><th scope="col">Fecha y lugar</th><th scope="col">Actividad</th><th scope="col">Acciones</th></tr></thead>
           <tbody>{result.events.map((event) => (
             <tr className="organizer-event-row" key={event.id}>
               <th data-label="Evento" scope="row">
@@ -131,6 +185,9 @@ export default function MyEventsPage() {
               </th>
               <td data-label="Estado"><span className={`status-badge status-${event.status}`}>{getEventStatusLabel(event.status)}</span></td>
               <td data-label="Fecha y lugar"><time dateTime={event.starts_at}>{formatEventDate(event.starts_at, 'medium')}</time>{event.location && <span className="organizer-event-location">{event.location}</span>}</td>
+              <td data-label="Actividad">
+                {metricsByEventId.has(event.id) ? <OrganizerEventActivity event={event} metrics={metricsByEventId.get(event.id)} upcoming={upcomingSessions[event.id]} /> : <span>Indicadores no disponibles</span>}
+              </td>
               <td data-label="Acciones"><div className="organizer-row-actions">
                 <Link className="button button-secondary" to={`/events/${event.id}?edit=1`}>Editar</Link>
                 {['draft', 'published'].includes(event.status) && <button className="button button-secondary" disabled={busyEventId === event.id} onClick={() => cancelEvent(event)} type="button">Cancelar evento</button>}
@@ -142,5 +199,21 @@ export default function MyEventsPage() {
       </div>}
       <PaginationControls disabled={!result} onPageChange={(nextPage) => updateFilters({ page: String(nextPage) })} pagination={result?.pagination} />
     </section>
+  )
+}
+
+/** Show only owner-scoped measurements returned by the event management APIs. */
+function OrganizerEventActivity({ event, metrics, upcoming }) {
+  return (
+    <div className="organizer-event-activity">
+      <span>{metrics.session_count} {metrics.session_count === 1 ? 'sesión' : 'sesiones'}</span>
+      <span>{metrics.active_registrations} {metrics.active_registrations === 1 ? 'inscripción activa' : 'inscripciones activas'}</span>
+      <span>{metrics.available_seats} {metrics.available_seats === 1 ? 'cupo libre' : 'cupos libres'}</span>
+      {event.status === 'published' && (!upcoming || upcoming.status === 'loading') && <span>Consultando próxima sesión…</span>}
+      {event.status === 'published' && upcoming?.status === 'error' && <span>Agenda no disponible</span>}
+      {event.status === 'published' && upcoming?.status === 'success' && (upcoming.session
+        ? <span>Próxima: {upcoming.session.title} · {formatEventDate(upcoming.session.starts_at, 'medium')}</span>
+        : <span>Sin próximas sesiones</span>)}
+    </div>
   )
 }
