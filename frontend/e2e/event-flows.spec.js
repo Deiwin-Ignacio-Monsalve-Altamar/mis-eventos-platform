@@ -32,13 +32,16 @@ async function mockApi(page, {
   owner = false,
   role = null,
   draft = false,
+  initialStatus = null,
+  failPublish = false,
+  publishDelayMs = 0,
   privateEventError = null,
   privateEventDelayMs = 0,
   failRegistration = false,
   failLogout = false,
 } = {}) {
   let sessions = [{ ...startingSession }]
-  let currentEvent = { ...event, status: draft ? 'draft' : event.status, images: [{ url: 'https://images.example.test/cover.webp', position: 0 }] }
+  let currentEvent = { ...event, status: initialStatus || (draft ? 'draft' : event.status), images: [{ url: 'https://images.example.test/cover.webp', position: 0 }] }
 
   await page.route('**/api/v1/**', async (route) => {
     const request = route.request()
@@ -96,8 +99,17 @@ async function mockApi(page, {
     } else if (path.match(/^\/events\/4\/sessions\/\d+\/capacity$/) && method === 'GET') {
       body = { capacity: 20, occupied: 1, available: 19 }
     } else if (path === '/events/4' && method === 'PATCH') {
-      currentEvent = { ...currentEvent, ...request.postDataJSON(), version: currentEvent.version + 1 }
-      body = { event: currentEvent }
+      const changes = request.postDataJSON()
+      if (changes.status === 'published' && failPublish) {
+        status = 422
+        body = { error: { code: 'validation_error', message: 'Capacity cannot be lower than active event registrations.' } }
+      } else {
+        if (changes.status === 'published' && publishDelayMs) {
+          await new Promise((resolve) => setTimeout(resolve, publishDelayMs))
+        }
+        currentEvent = { ...currentEvent, ...changes, version: currentEvent.version + 1 }
+        body = { event: currentEvent }
+      }
     } else if (path === '/events/4/sessions' && method === 'POST') {
       const data = request.postDataJSON()
       const created = { ...data, id: 10, event_id: 4, version: 1, speaker_ids: [] }
@@ -327,6 +339,53 @@ test('opens and edits an own draft through the private event endpoint without re
   expect(publicDetailRequests).toHaveLength(0)
   expect(draftSessionRequests).toHaveLength(0)
 })
+
+test('saves and publishes an own draft, then refreshes the organizer event list', async ({ page }) => {
+  await mockApi(page, { authenticated: true, owner: true, role: 'ORGANIZER', draft: true, publishDelayMs: 500 })
+  const publishRequests = []
+  page.on('request', (request) => {
+    if (request.method() === 'PATCH' && new URL(request.url()).pathname === '/api/v1/events/4') {
+      publishRequests.push(request.postDataJSON())
+    }
+  })
+  await page.goto('/events/4')
+  await page.getByRole('button', { name: 'Editar evento' }).click()
+  await page.getByLabel('Nombre del evento').fill('Published Design Day')
+  await page.getByRole('button', { name: 'Publicar evento' }).dblclick()
+
+  await expect(page).toHaveURL(/\/my-events$/)
+  const publishedRow = page.getByRole('row', { name: /Published Design Day/ })
+  await expect(publishedRow.getByText('Publicado')).toBeVisible()
+  expect(publishRequests).toHaveLength(1)
+  expect(publishRequests[0]).toMatchObject({ title: 'Published Design Day', status: 'published', version: 1 })
+})
+
+test('shows backend publication validation and preserves the draft form values', async ({ page }) => {
+  await mockApi(page, { authenticated: true, owner: true, role: 'ORGANIZER', draft: true, failPublish: true })
+  await page.goto('/events/4')
+  await page.getByRole('button', { name: 'Editar evento' }).click()
+  await page.getByLabel('Nombre del evento').fill('Draft with changes')
+  await page.getByRole('button', { name: 'Publicar evento' }).click()
+
+  await expect(page.getByText('El servidor rechazó los cambios: Capacity cannot be lower than active event registrations.')).toBeVisible()
+  await expect(page.getByText('Capacity cannot be lower than active event registrations.', { exact: true })).toBeVisible()
+  await expect(page.locator('.event-form #event-capacity')).toHaveAttribute('aria-invalid', 'true')
+  await expect(page.getByLabel('Nombre del evento')).toHaveValue('Draft with changes')
+  await expect(page.getByLabel('Estado')).toHaveValue('draft')
+  await expect(page.getByRole('button', { name: 'Publicar evento' })).toBeEnabled()
+  await expect(page).toHaveURL(/\?edit=1$/)
+})
+
+for (const status of ['published', 'cancelled', 'completed']) {
+  test(`does not offer draft publication for a ${status} event`, async ({ page }) => {
+    await mockApi(page, { authenticated: true, owner: true, role: 'ORGANIZER', initialStatus: status })
+    await page.goto('/events/4')
+    await page.getByRole('button', { name: 'Editar evento' }).click()
+
+    await expect(page.getByRole('button', { name: 'Publicar evento' })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'Guardar cambios' })).toBeVisible()
+  })
+}
 
 test('does not fall back to public detail when the private owner lookup fails', async ({ page }) => {
   await mockApi(page, { authenticated: true, owner: false, role: 'ORGANIZER', draft: true })

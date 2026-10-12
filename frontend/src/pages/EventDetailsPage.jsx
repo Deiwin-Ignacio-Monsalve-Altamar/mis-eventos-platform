@@ -39,6 +39,7 @@ export default function EventDetailsPage() {
   const [sessionAction, setSessionAction] = useState({ status: 'idle', error: null, deletingId: null })
   const registrationRequest = useRef(false)
   const sessionRequest = useRef(false)
+  const eventMutationRequest = useRef(false)
   const ownerRequestKey = `${auth.status}:${auth.user?.id ?? ''}:${event?.id ?? ''}`
   const ownerAccess = ownerResult?.key === ownerRequestKey ? ownerResult.status : 'checking'
   const currentCapacityQuery = capacityQuery?.eventId === event?.id
@@ -123,14 +124,29 @@ export default function EventDetailsPage() {
 
   const canRegister = isEventOpenForRegistration(event)
 
-  async function handleSaveEvent(values, images) {
+  async function handleSaveEvent(values, images, action = 'save') {
+    if (eventMutationRequest.current) return
+    eventMutationRequest.current = true
     setEventAction({ status: 'saving', error: null })
     try {
-      await saveEventChanges(event.id, { ...values, version: event.version }, images)
-      navigate(getEventEditorLocation(location.pathname, location.search, false), { replace: true })
+      const savedEvent = await saveEventChanges(event.id, { ...values, version: event.version }, images)
+      if (action === 'publish' && savedEvent.status !== 'published') {
+        setEventAction({
+          status: 'error',
+          error: { code: 'publish_not_confirmed', message: 'El servidor no confirmó la publicación. Tus cambios siguen en el formulario.' },
+        })
+        return
+      }
       setEventAction({ status: 'saved', error: null })
+      if (action === 'publish' && auth.user?.role === 'ORGANIZER') {
+        navigate('/my-events', { replace: true })
+      } else {
+        navigate(getEventEditorLocation(location.pathname, location.search, false), { replace: true })
+      }
     } catch (requestError) {
       setEventAction({ status: 'error', error: requestError })
+    } finally {
+      eventMutationRequest.current = false
     }
   }
 
