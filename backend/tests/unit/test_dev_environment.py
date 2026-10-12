@@ -143,6 +143,58 @@ def test_compose_orders_database_migrations_and_backend_without_revision_generat
     assert "revision --autogenerate" not in compose
 
 
+def test_backend_host_port_is_configurable_without_changing_internal_port():
+    compose = (dev.ROOT / "docker-compose.yml").read_text()
+    environment_example = (dev.ROOT / ".env.example").read_text()
+
+    assert '"127.0.0.1:${BACKEND_HOST_PORT:-5000}:5000"' in compose
+    assert "BACKEND_HOST_PORT=5000" in environment_example
+    assert "API_PROXY_TARGET: http://backend:5000" in compose
+
+
+def test_postgres_host_port_is_configurable_without_changing_internal_port():
+    compose = (dev.ROOT / "docker-compose.yml").read_text()
+    environment_example = (dev.ROOT / ".env.example").read_text()
+
+    assert '"${POSTGRES_HOST_PORT:-5432}:5432"' in compose
+    assert "POSTGRES_HOST_PORT=5432" in environment_example
+    assert "@db:5432/" in compose
+
+
+def test_compose_port_resolves_the_configured_backend_host_port(monkeypatch):
+    commands = []
+
+    def fake_command_output(command):
+        commands.append(command)
+        return 0, "127.0.0.1:5101"
+
+    monkeypatch.setattr(dev, "command_output", fake_command_output)
+
+    assert dev.compose_port("backend") == "http://localhost:5101"
+    assert commands[0][-3:] == ["port", "backend", "5000"]
+
+
+def test_service_readiness_checks_use_the_resolved_backend_url(monkeypatch):
+    resolved_ports = {
+        "backend": "http://localhost:5101",
+        "frontend": "http://localhost:5173",
+    }
+    probed_urls = []
+    monkeypatch.setattr(dev, "compose_port", lambda service: resolved_ports[service])
+    monkeypatch.setattr(
+        dev,
+        "probe_url",
+        lambda url: (probed_urls.append(url) is None, "200"),
+    )
+
+    assert dev.show_service_urls()
+    assert probed_urls == [
+        "http://localhost:5101/api/v1/ready",
+        "http://localhost:5173",
+        "http://localhost:5101/apidocs/",
+    ]
+
+
 def test_failed_compose_migration_prevents_success_message(
     tmp_path, monkeypatch, capsys
 ):
