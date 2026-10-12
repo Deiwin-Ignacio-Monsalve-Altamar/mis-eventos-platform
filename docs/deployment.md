@@ -40,10 +40,17 @@ frontend values as build-time variables in the static host.
 | `VITE_API_BASE_URL` | Frontend build | Optional | Public API base compiled into the bundle; use the backend's public URL plus `/api/v1` for separate services, or `/api/v1` when a same-origin proxy exists. |
 | `VITE_APP_ENVIRONMENT` | Frontend build | Optional | Public telemetry label; default `local`. |
 | `VITE_APP_VERSION` | Frontend build | Optional | Public telemetry label; default `dev`. |
+| `CLOUDINARY_URL` | Backend secret | Required when event images are uploaded | Cloudinary connection URL in the form `cloudinary://<api_key>:<api_secret>@<cloud_name>`. Store it only in the backend's private environment settings. |
 
 The root `.env.example` contains local development values. Do not copy its
 database credentials into a hosted service. The `VITE_*` values are public and
 must never contain credentials or signing keys.
+
+Set `CLOUDINARY_URL` from the Cloudinary API credentials in the backend host's
+private environment settings. It is optional at startup and validated only
+when an image upload or managed Cloudinary asset cleanup is requested. New
+uploads use the `mis-eventos/events` folder. Existing R2 URLs remain stored and
+are not migrated automatically.
 
 ## Build and configure the static frontend
 

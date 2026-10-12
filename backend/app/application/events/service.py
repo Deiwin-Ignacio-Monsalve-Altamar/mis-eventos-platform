@@ -1,10 +1,18 @@
 """Validate event input and coordinate event creation and editing."""
 
+from dataclasses import replace
 from datetime import UTC, datetime
+from typing import BinaryIO
 
 from app.application.dto.event_page import EventPage
+from app.application.events.image_service import EventImageService, StagedEventImages
 from app.application.pagination import positive_integer
-from app.core.exceptions import AuthorizationError, NotFoundError, ValidationError
+from app.core.exceptions import (
+    AuthorizationError,
+    EventImageStorageError,
+    NotFoundError,
+    ValidationError,
+)
 from app.domain.entities.event_record import EventRecord
 from app.domain.repositories.event_repository import EventRepository
 from app.observability.metrics import increment_business_metric
@@ -31,16 +39,37 @@ EDITABLE_FIELDS = {
 class EventService:
     """Coordinate validation and persistence for protected event operations."""
 
-    def __init__(self, event_repository: EventRepository) -> None:
-        """Set the event persistence port used by this service."""
+    def __init__(
+        self,
+        event_repository: EventRepository,
+        event_image_service: EventImageService | None = None,
+    ) -> None:
+        """Set persistence ports used by event operations."""
         self._event_repository = event_repository
+        self._event_image_service = event_image_service
 
-    def create(self, values: dict[str, object], creator_id: int) -> EventRecord:
+    def create(
+        self,
+        values: dict[str, object],
+        creator_id: int,
+        image_files: list[BinaryIO] | None = None,
+    ) -> EventRecord:
         """Validate and persist an event attributed to its authenticated creator."""
         event_values = self._validated_values(values)
-        event = self._event_repository.save(
-            EventRecord(created_by_id=creator_id, **event_values)
-        )
+        staged = self._stage_images(image_files)
+        event = None
+        try:
+            event = self._event_repository.save(
+                EventRecord(created_by_id=creator_id, **event_values)
+            )
+            if staged is not None:
+                images = self._event_image_service.replace(event.id, staged)
+                event = replace(event, images=tuple(images))
+        except Exception:
+            self._cleanup_images(staged)
+            if event is not None and event.id is not None:
+                self._event_repository.delete(event.id, creator_id)
+            raise
         increment_business_metric("event_created")
         return event
 
@@ -51,6 +80,7 @@ class EventService:
         expected_version: object,
         creator_id: int,
         is_admin: bool = False,
+        image_files: list[BinaryIO] | None = None,
     ) -> EventRecord:
         """Authorize the creator or explicit admin override before saving changes."""
         existing = self._event_repository.find_by_id(event_id)
@@ -64,7 +94,7 @@ class EventService:
             or expected_version < 1
         ):
             raise ValidationError("A positive integer resource version is required.")
-        if not values:
+        if not values and not image_files:
             raise ValidationError("At least one editable event field is required.")
 
         current_values = {
@@ -78,15 +108,24 @@ class EventService:
         }
         current_values.update(values)
         event_values = self._validated_values(current_values)
+        staged = self._stage_images(image_files)
         updated = EventRecord(
             id=existing.id,
             created_by_id=existing.created_by_id,
             version=existing.version,
             **event_values,
         )
-        return self._event_repository.save(
-            updated, expected_version, creator_id, is_admin=is_admin
-        )
+        try:
+            saved = self._event_repository.save(
+                updated, expected_version, creator_id, is_admin=is_admin
+            )
+            if staged is not None:
+                images = self._event_image_service.replace(event_id, staged)
+                return replace(saved, images=tuple(images))
+            return saved
+        except Exception:
+            self._cleanup_images(staged)
+            raise
 
     def delete(self, event_id: int, creator_id: int, is_admin: bool = False) -> None:
         """Delete an owned or admin-managed event subject to relation constraints."""
@@ -95,8 +134,31 @@ class EventService:
             raise NotFoundError("Event not found.")
         if existing.created_by_id != creator_id and not is_admin:
             raise AuthorizationError("Only the event creator can delete this event.")
+        images = (
+            self._event_image_service.stored_for_event(event_id)
+            if self._event_image_service is not None
+            else []
+        )
+        deletion = (
+            self._event_image_service.prepare_deletion(images)
+            if self._event_image_service is not None
+            else None
+        )
         if not self._event_repository.delete(event_id, creator_id, is_admin=is_admin):
             raise NotFoundError("Event not found.")
+        if self._event_image_service is not None:
+            self._event_image_service.delete_stored(images, deletion)
+
+    def _stage_images(self, files: list[BinaryIO] | None) -> StagedEventImages | None:
+        if not files:
+            return None
+        if self._event_image_service is None:
+            raise EventImageStorageError("Image storage is unavailable.")
+        return self._event_image_service.stage(files)
+
+    def _cleanup_images(self, staged: StagedEventImages | None) -> None:
+        if staged is not None and self._event_image_service is not None:
+            self._event_image_service.cleanup(staged)
 
     def get_by_id(self, event_id: int) -> EventRecord:
         """Return a persisted event or raise when it does not exist."""

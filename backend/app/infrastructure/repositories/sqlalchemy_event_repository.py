@@ -4,7 +4,7 @@ from datetime import datetime
 
 from sqlalchemy import case, func, or_, select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 from sqlalchemy.orm.exc import StaleDataError
 
 from app.core.exceptions import (
@@ -14,6 +14,7 @@ from app.core.exceptions import (
     RelatedRecordsError,
     ValidationError,
 )
+from app.domain.entities.event_image import EventImageRecord
 from app.domain.entities.event_record import EventRecord
 from app.infrastructure.database.models import Event, EventSession, Registration
 
@@ -54,6 +55,7 @@ class SQLAlchemyEventRepository:
         total = self._session.scalar(total_statement) or 0
         events_statement = (
             select(Event)
+            .options(selectinload(Event.images))
             .where(*filters)
             .order_by(Event.starts_at.asc(), Event.id.asc())
             .offset((page - 1) * page_size)
@@ -85,6 +87,7 @@ class SQLAlchemyEventRepository:
         total = self._session.scalar(select(func.count(Event.id)).where(*filters)) or 0
         statement = (
             select(Event)
+            .options(selectinload(Event.images))
             .where(*filters)
             .order_by(Event.starts_at.asc(), Event.id.asc())
             .offset((page - 1) * page_size)
@@ -164,6 +167,7 @@ class SQLAlchemyEventRepository:
         )
         rows = self._session.execute(
             select(Event, active_registrations, session_count)
+            .options(selectinload(Event.images))
             .where(Event.created_by_id == creator_id)
             .order_by(
                 case((Event.starts_at > now, 0), else_=1),
@@ -387,4 +391,15 @@ class SQLAlchemyEventRepository:
             status=model.status,
             created_by_id=model.created_by_id,
             version=model.version,
+            images=tuple(
+                EventImageRecord(
+                    id=image.id,
+                    event_id=image.event_id,
+                    storage_key=image.storage_key,
+                    url=image.url,
+                    position=image.position,
+                    created_at=image.created_at,
+                )
+                for image in model.images
+            ),
         )

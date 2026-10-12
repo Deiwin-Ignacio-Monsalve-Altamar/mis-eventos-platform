@@ -32,6 +32,7 @@ services:
       APP_ENVIRONMENT: ${APP_ENVIRONMENT:-local}
       APP_VERSION: ${APP_VERSION:-dev}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      CLOUDINARY_URL: ${CLOUDINARY_URL:-}
     ports:
       - "127.0.0.1:5000:5000"
     healthcheck:

@@ -66,6 +66,16 @@ Do not share or commit `.env`. PostgreSQL credentials in Compose are for local d
 | `JWT_COOKIE_SECURE` | Cookie Secure attribute. Defaults to `false` locally; production requires `true`. |
 | `APP_ENVIRONMENT` | Environment label; defaults to `local` and is normalized to lowercase. |
 | `APP_VERSION`, `SERVICE_NAME`, `LOG_LEVEL` | Service and log labels. Defaults are `dev`, `mis-eventos-backend`, and `INFO`. |
+| `CLOUDINARY_URL` | Optional until event images are uploaded. Use `cloudinary://<api_key>:<api_secret>@<cloud_name>` and keep it in the backend environment or secret manager. |
+
+Event creation and editing accept `multipart/form-data` with an `event` field
+containing the JSON event payload and one or more repeated `images` file fields.
+JPEG, PNG, and WebP inputs up to 5 MB each are converted in memory to WebP.
+The API uploads each image to Cloudinary under `mis-eventos/events`, then stores
+the returned HTTPS `secure_url` and Cloudinary `public_id` in the event gallery.
+Cloudinary is configured lazily, so no account access is needed when the API
+starts without image uploads. Existing gallery URLs remain unchanged; existing
+R2 objects are not migrated or deleted automatically.
 
 To start local PostgreSQL with Compose, run this command from the repository root:
 

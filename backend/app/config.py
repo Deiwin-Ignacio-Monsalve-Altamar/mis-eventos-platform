@@ -5,6 +5,7 @@ import os
 from app.settings import (
     APP_ENVIRONMENT_ENV,
     APP_VERSION_ENV,
+    CLOUDINARY_URL_ENV,
     DATABASE_URL_ENV,
     DEFAULT_ACCESS_TOKEN_TTL_SECONDS,
     DEFAULT_APP_ENVIRONMENT,
@@ -17,6 +18,7 @@ from app.settings import (
     JWT_COOKIE_SECURE_ENV,
     JWT_SECRET_KEY_ENV,
     LOG_LEVEL_ENV,
+    MAX_EVENT_IMAGE_REQUEST_SIZE_BYTES,
     SERVICE_NAME_ENV,
 )
 
@@ -70,6 +72,7 @@ def load_config() -> dict[str, object]:
         "DATABASE_URL": database_url,
         "SQLALCHEMY_DATABASE_URI": database_url,
         "SQLALCHEMY_TRACK_MODIFICATIONS": False,
+        "MAX_CONTENT_LENGTH": MAX_EVENT_IMAGE_REQUEST_SIZE_BYTES,
         "JWT_SECRET_KEY": os.getenv(JWT_SECRET_KEY_ENV),
         "JWT_ACCESS_TOKEN_TTL_SECONDS": token_ttl,
         "JWT_COOKIE_SECURE": secure_cookie,
@@ -78,4 +81,5 @@ def load_config() -> dict[str, object]:
         "APP_ENVIRONMENT": environment,
         "APP_VERSION": os.getenv(APP_VERSION_ENV, DEFAULT_APP_VERSION),
         "LOG_LEVEL": os.getenv(LOG_LEVEL_ENV, DEFAULT_LOG_LEVEL),
+        CLOUDINARY_URL_ENV: os.getenv(CLOUDINARY_URL_ENV, "").strip(),
     }

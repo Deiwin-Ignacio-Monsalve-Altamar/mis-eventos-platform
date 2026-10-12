@@ -15,7 +15,9 @@ dependencies = [
     "flasgger (>=0.9.7.1,<0.10.0.0)",
     "prometheus-client (>=0.23,<1)",
     "gunicorn (>=26,<27)",
-    "flask-cors (>=6,<7)"
+    "flask-cors (>=6,<7)",
+    "pillow (>=11,<13)",
+    "cloudinary (>=1.46.3,<2.0.0)"
 ]
 
 
