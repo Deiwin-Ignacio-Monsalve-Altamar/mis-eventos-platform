@@ -4,15 +4,18 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     POETRY_VERSION=2.5.1 \
     POETRY_NO_INTERACTION=1 \
-    POETRY_VIRTUALENVS_CREATE=false
+    POETRY_VIRTUALENVS_CREATE=true \
+    POETRY_VIRTUALENVS_IN_PROJECT=true \
+    PATH="/app/.venv/bin:/opt/poetry/bin:$PATH"
 
 WORKDIR /app
 
-RUN pip install --no-cache-dir "poetry==$POETRY_VERSION"
+RUN python -m venv /opt/poetry \
+    && /opt/poetry/bin/pip install --no-cache-dir "poetry==$POETRY_VERSION"
 
 COPY pyproject.toml poetry.lock* ./
 
-RUN poetry install --only main --no-root
+RUN poetry install --only main --no-root --sync
 
 COPY . .
 

@@ -4,9 +4,9 @@ services:
     container_name: mis-eventos-db
     restart: unless-stopped
     environment:
-      POSTGRES_DB: mis_eventos
-      POSTGRES_USER: mis_eventos
-      POSTGRES_PASSWORD: mis_eventos_dev
+      POSTGRES_DB: ${POSTGRES_DB:-mis_eventos}
+      POSTGRES_USER: ${POSTGRES_USER:-mis_eventos}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mis_eventos_dev}
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s
@@ -20,11 +20,12 @@ services:
   backend:
     build:
       context: ./backend
+    image: mis-eventos-backend:local
     container_name: mis-eventos-backend
     restart: unless-stopped
     command: ["python", "-m", "app"]
     environment:
-      DATABASE_URL: postgresql+psycopg://mis_eventos:mis_eventos_dev@db:5432/mis_eventos
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-mis_eventos}:${POSTGRES_PASSWORD:-mis_eventos_dev}@db:5432/${POSTGRES_DB:-mis_eventos}
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:?Generate JWT_SECRET_KEY and set it in the root .env file}
       JWT_ACCESS_TOKEN_TTL_SECONDS: ${JWT_ACCESS_TOKEN_TTL_SECONDS:-3600}
       JWT_COOKIE_SECURE: ${JWT_COOKIE_SECURE:-false}
@@ -48,6 +49,20 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  migrate:
+    build:
+      context: ./backend
+    image: mis-eventos-backend:local
+    restart: "no"
+    command: ["poetry", "run", "alembic", "upgrade", "head"]
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-mis_eventos}:${POSTGRES_PASSWORD:-mis_eventos_dev}@db:5432/${POSTGRES_DB:-mis_eventos}
+    depends_on:
+      db:
+        condition: service_healthy
 
   frontend:
     build:
@@ -63,7 +78,8 @@ services:
     ports:
       - "5173:5173"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
 
 volumes:
   postgres_data:
