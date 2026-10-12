@@ -70,11 +70,11 @@ test('event detail, sessions, and public capacity use their documented routes', 
       ? { sessions: [{ id: 3 }] }
       : url.endsWith('/capacity')
         ? { capacity: 20, occupied: 4, available: 16 }
-        : { event: { id: 42 } }
+        : { event: { id: 42, images: [{ url: 'https://cdn.test/photo.webp', position: 0 }] } }
     return { ok: true, status: 200, json: async () => data }
   }
 
-  assert.deepEqual(await getEvent(42), { id: 42 })
+  assert.deepEqual(await getEvent(42), { id: 42, images: [{ url: 'https://cdn.test/photo.webp', position: 0 }] })
   assert.deepEqual(await getEventCapacity(42), { capacity: 20, occupied: 4, available: 16 })
   assert.deepEqual(await listEventSessions(42), [{ id: 3 }])
   assert.deepEqual(await getSessionOccupancy(42, 3), { capacity: 20, occupied: 4, available: 16 })
@@ -143,6 +143,43 @@ test('event creation posts the backend event fields to the authenticated route',
   assert.equal(requestOptions.method, 'POST')
   assert.deepEqual(JSON.parse(requestOptions.body), payload)
   assert.equal(requestOptions.credentials, 'include')
+})
+
+test('event creation and update send multipart event JSON and repeated image fields without setting the boundary header', async () => {
+  const calls = []
+  globalThis.fetch = async (url, options) => {
+    calls.push({ url, options })
+    return { ok: true, status: options.method === 'POST' ? 201 : 200, json: async () => ({ event: { id: 42, images: [] } }) }
+  }
+  const values = { title: 'Forum', version: 4 }
+  const images = [new Blob(['one'], { type: 'image/png' }), new Blob(['two'], { type: 'image/webp' })]
+
+  await createEvent(values, images)
+  await updateEvent(42, values, images)
+
+  for (const { options } of calls) {
+    assert.ok(options.body instanceof FormData)
+    assert.deepEqual(JSON.parse(options.body.get('event')), values)
+    assert.equal(options.body.getAll('images').length, 2)
+    assert.equal(options.headers['Content-Type'], undefined)
+  }
+  assert.equal(calls[0].url, '/api/v1/events')
+  assert.equal(calls[1].url, '/api/v1/events/42')
+})
+
+test('updating without replacement images keeps the JSON version contract', async () => {
+  let requestOptions
+  globalThis.fetch = async (_url, options) => {
+    requestOptions = options
+    return { ok: true, status: 200, json: async () => ({ event: { id: 42, images: [{ url: 'https://cdn.test/current.webp', position: 0 }] } }) }
+  }
+  const event = { title: 'Updated', version: 5 }
+
+  const updated = await updateEvent(42, event)
+
+  assert.deepEqual(JSON.parse(requestOptions.body), event)
+  assert.equal(requestOptions.headers['Content-Type'], 'application/json')
+  assert.deepEqual(updated.images, [{ url: 'https://cdn.test/current.webp', position: 0 }])
 })
 
 test('event updates send the required version and delete uses the real endpoint', async () => {

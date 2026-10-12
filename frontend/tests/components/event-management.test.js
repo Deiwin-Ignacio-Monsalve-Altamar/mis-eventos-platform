@@ -251,7 +251,7 @@ test('shared edit form is prefilled with the event returned by the API', async (
     const { default: EventForm } = await vite.ssrLoadModule('/src/components/EventForm.jsx')
     const { toLocalDateTimeValue } = await vite.ssrLoadModule('/src/utils/eventForm.js')
     const markup = renderToString(createElement(EventForm, {
-      event,
+      event: { ...event, images: [{ url: 'https://cdn.test/current.webp', position: 0 }] },
       onSubmit: async () => {},
       isSubmitting: false,
     }))
@@ -262,6 +262,28 @@ test('shared edit form is prefilled with the event returned by the API', async (
     assert.ok(markup.includes(`value="${toLocalDateTimeValue(event.starts_at)}"`))
     assert.match(markup, /value="published" selected/)
     assert.match(markup, /Guardar cambios/)
+    assert.match(markup, /Seleccionar imágenes para reemplazar la galería/)
+    assert.match(markup, /aria-label="Galería actual; se conservará si no seleccionas imágenes nuevas"/)
+  } finally {
+    await vite.close()
+  }
+})
+
+test('event gallery renders images in position order and a coherent empty state', async () => {
+  const vite = await createTestServer()
+  try {
+    const { default: EventImageGallery } = await vite.ssrLoadModule('/src/components/EventImageGallery.jsx')
+    const populated = renderToString(createElement(EventImageGallery, {
+      event: { title: 'Community gathering', images: [
+        { url: 'https://cdn.test/second.webp', position: 1 },
+        { url: 'https://cdn.test/first.webp', position: 0 },
+      ] },
+    }))
+    const empty = renderToString(createElement(EventImageGallery, { event: { title: 'Community gathering', images: [] } }))
+
+    assert.match(populated, /second.webp/)
+    assert.doesNotMatch(populated, /first.webp/)
+    assert.match(empty, /La organización aún no ha agregado imágenes/)
   } finally {
     await vite.close()
   }

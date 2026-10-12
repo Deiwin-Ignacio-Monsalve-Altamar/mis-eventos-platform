@@ -14,11 +14,11 @@ export default function CreateEventPage() {
   const [error, setError] = useState(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
-  async function handleSubmit(values) {
+  async function handleSubmit(values, images) {
     setError(null)
     setIsSubmitting(true)
     try {
-      const createdEvent = await submitEvent(values)
+      const createdEvent = await submitEvent(values, images)
       navigate(`/events/${createdEvent.id}`, { replace: true })
     } catch (requestError) {
       setError(requestError)
