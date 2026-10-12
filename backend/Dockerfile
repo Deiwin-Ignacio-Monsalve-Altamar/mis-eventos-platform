@@ -12,7 +12,7 @@ RUN pip install --no-cache-dir "poetry==$POETRY_VERSION"
 
 COPY pyproject.toml poetry.lock* ./
 
-RUN poetry install --only main --no-root
+RUN poetry install --only main --no-root --sync
 
 COPY . .
 
