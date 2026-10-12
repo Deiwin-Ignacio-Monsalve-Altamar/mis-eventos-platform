@@ -46,11 +46,11 @@ After the migration succeeds, `make run` initializes three deterministic demonst
 
 | Role | Email | Password |
 | --- | --- | --- |
-| ADMIN | `admin.demo@mis-eventos.local` | `DemoAdmin-2026!` |
-| ORGANIZER | `organizer.demo@mis-eventos.local` | `DemoOrganizer-2026!` |
-| ATTENDEE | `attendee.demo@mis-eventos.local` | `DemoAttendee-2026!` |
+| ADMIN | `admin@mis-eventos.test` | `admin1234` |
+| ORGANIZER | `organizador@mis-eventos.test` | `organizador_1234` |
+| ATTENDEE | `asisitidor@mis-eventos.test` | `asistidor_1234` |
 
-These demonstration credentials are for local development only and must never be used in production. `make run` requires `APP_ENVIRONMENT=local`, and the backend command independently rejects every other environment. Existing accounts are never changed; if a demonstration email already has different account data, initialization stops with an error.
+These demonstration credentials are for local development only and must never be used in production. `make run` requires `APP_ENVIRONMENT=local`, and the backend command independently rejects every other environment. Existing accounts are never changed; if a demonstration email already has a different role, initialization stops with an error. If an administrator already exists, `make run` keeps it and initializes only the missing organizer and attendee accounts.
 
 Local URLs (ports from `docker-compose.yml`):
 

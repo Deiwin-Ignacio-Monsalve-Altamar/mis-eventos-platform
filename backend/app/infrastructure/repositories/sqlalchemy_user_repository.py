@@ -34,6 +34,16 @@ class SQLAlchemyUserRepository:
         user = self._session.get(User, user_id)
         return self._to_account(user) if user is not None else None
 
+    def find_first_admin(self) -> UserAccount | None:
+        """Load one existing administrator for trusted administrative workflows."""
+        user = self._session.scalar(
+            select(User)
+            .where(User.role == UserRole.ADMIN.value)
+            .order_by(User.id)
+            .limit(1)
+        )
+        return self._to_account(user) if user is not None else None
+
     def add(self, account: UserAccount) -> UserAccount:
         """Insert a user row and translate email uniqueness violations."""
         user = User(
