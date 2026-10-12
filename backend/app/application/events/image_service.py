@@ -67,14 +67,6 @@ class EventImageService:
             or parsed_url.fragment
         ):
             raise EventImageStorageError("Public image storage URL is invalid.")
-        parsed_url = urlsplit(public_base_url.strip())
-        if (
-            parsed_url.scheme not in {"http", "https"}
-            or not parsed_url.netloc
-            or parsed_url.query
-            or parsed_url.fragment
-        ):
-            raise EventImageStorageError("Public image storage URL is invalid.")
         if not isinstance(bucket, str) or not bucket.strip():
             raise EventImageStorageError("Image storage is not configured.")
 
@@ -219,5 +211,5 @@ class EventImageService:
             )
             if result.get("Errors"):
                 logger.warning("Some event image objects could not be removed.")
-        except Exception:
+        except Exception:  # noqa: BLE001 - cleanup must not mask the original failure
             logger.warning("Could not remove stored event images.")
