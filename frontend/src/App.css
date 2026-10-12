@@ -852,12 +852,14 @@ h2 {
   .event-card-featured { grid-column: span 2; }
   .event-detail-editorial { grid-template-columns: 1fr; }
   .event-artwork-detail { min-height: 230px; }
+  .event-cover-detail { min-height: 230px; }
 }
 
 @media (max-width: 520px) {
   .event-grid { grid-template-columns: 1fr; }
   .event-card-featured { grid-column: auto; display: flex; }
   .event-card-featured .event-artwork { min-height: 190px; }
+  .event-card-featured .event-cover-card { min-height: 190px; }
   .event-discovery-heading { align-items: flex-start; flex-direction: column; }
   .pagination-controls { gap: 10px; justify-content: space-between; }
   .pagination-controls p { text-align: center; font-size: .84rem; }
@@ -1448,6 +1450,11 @@ h1, h2 { color: var(--ink); }
 .event-artwork-orbit { background: var(--accent-yellow); box-shadow: 0 0 20px 10px rgb(245 45 145 / 18%); }
 .event-artwork-session { border: 1px solid #e5dafa; }
 .event-artwork-detail { border-right: 1px solid #e5dafa; }
+.event-cover { display: block; width: 100%; height: 100%; min-height: 170px; object-fit: cover; }
+.event-cover-detail { min-height: 320px; }
+.event-cover-editor { min-height: 180px; border: 1px solid #e5dafa; border-radius: 12px; }
+.event-current-images { display: grid; gap: 16px; margin: 12px 0 18px; }
+.event-current-images h3 { margin: 0 0 8px; font-size: 1rem; }
 .event-empty-state,
 .event-detail-state { border-color: #e5dcf8; border-radius: var(--radius-card); box-shadow: var(--shadow-card); }
 .event-empty-mark { color: var(--accent-pink-ink); }
@@ -1455,6 +1462,17 @@ h1, h2 { color: var(--ink); }
 .event-detail-editorial { overflow: hidden; border-color: #e3ddf2; border-radius: 22px; box-shadow: var(--shadow-card); }
 .event-detail-copy .eyebrow { color: var(--accent-pink-ink); }
 .event-detail-copy .event-facts div { border: 1px solid #ece7f5; border-radius: 14px; background: #fbfaff; }
+.event-gallery { margin: 36px 0 52px; }
+.event-gallery h2 { margin-bottom: 18px; font-family: Georgia, 'Times New Roman', serif; font-size: 1.8rem; }
+.event-gallery-empty { padding: 24px; color: var(--muted); background: var(--surface); border: 1px dashed var(--line); border-radius: 14px; }
+.event-image-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr)); gap: 14px; }
+.event-image-grid > img, .event-image-grid figure > img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 12px; }
+.event-image-grid figure { min-width: 0; margin: 0; padding: 10px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; }
+.event-image-grid figcaption { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-top: 10px; }
+.event-image-grid figcaption span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.event-image-grid-compact { margin: 12px 0 18px; }
+.event-image-grid-compact > img { aspect-ratio: 16 / 9; }
+.event-form input[type='file'] { display: block; max-width: 100%; margin-top: 8px; }
 .event-registration .button-primary { background: var(--brand); }
 .event-management { margin-top: 26px; padding-top: 20px; border-top: 1px solid var(--line); }
 .event-management-actions { flex-wrap: wrap; gap: 10px; }
@@ -1476,6 +1494,7 @@ h1, h2 { color: var(--ink); }
 .organizer-event-list, .attendance-list { display: grid; gap: 16px; }
 .organizer-event-card, .attendance-card { display: grid; grid-template-columns: minmax(170px, 240px) minmax(0, 1fr); gap: 22px; padding: 18px; border: 1px solid #e5e1ef; border-radius: var(--radius-card); background: #fff; box-shadow: var(--shadow-card); }
 .organizer-event-card > .event-artwork, .attendance-card > .event-artwork { min-height: 180px; border-radius: 14px; }
+.organizer-event-cover { width: 100%; height: 180px; min-height: 0; border-radius: 14px; object-fit: cover; }
 .organizer-event-copy h2, .attendance-card-copy h2 { margin: 12px 0 8px; font-size: 1.35rem; }
 .organizer-event-copy h2 a, .attendance-card-copy h2 a { color: var(--ink); text-decoration: none; }
 .organizer-event-copy h2 a:hover, .attendance-card-copy h2 a:hover { color: var(--brand-dark); text-decoration: underline; text-underline-offset: 3px; }
@@ -1668,6 +1687,7 @@ h1, h2 { color: var(--ink); }
   .organizer-page-heading { align-items: flex-start; flex-direction: column; }
   .organizer-event-card, .attendance-card { grid-template-columns: 1fr; gap: 14px; }
   .organizer-event-card > .event-artwork, .attendance-card > .event-artwork { min-height: 150px; }
+  .organizer-event-cover { height: 190px; }
   .profile-activity .profile-section-heading { align-items: flex-start; flex-direction: column; }
   .profile-activity .profile-section-heading .button-row { width: 100%; }
   .profile-activity .profile-section-heading .button { flex: 1 1 100%; }

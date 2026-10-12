@@ -96,21 +96,30 @@ export async function getSessionOccupancy(eventId, sessionId) {
 }
 
 /** Create an event using the current cookie-authenticated user. */
-export async function createEvent(event) {
+export async function createEvent(event, images = []) {
   const response = await request('/events', {
     method: 'POST',
-    body: event,
+    body: eventRequestBody(event, images),
   })
   return response.event
 }
 
 /** Update an event with the resource version required by the backend. */
-export async function updateEvent(eventId, event) {
+export async function updateEvent(eventId, event, images = []) {
   const response = await request(`/events/${encodeURIComponent(eventId)}`, {
     method: 'PATCH',
-    body: event,
+    body: eventRequestBody(event, images),
   })
   return response.event
+}
+
+/** Keep ordinary JSON requests unless the editor supplied replacement images. */
+function eventRequestBody(event, images) {
+  if (!images.length) return event
+  const body = new FormData()
+  body.append('event', JSON.stringify(event))
+  images.forEach((image) => body.append('images', image))
+  return body
 }
 
 /** Delete an event through the authenticated endpoint. */

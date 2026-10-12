@@ -5,7 +5,8 @@ import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { createEventSession, deleteEventSession, getEventCapacity, getMyEvent, updateEventSession } from '../api/events.js'
 import { cancelMyEventRegistration, findMyEventRegistration, registerForEvent } from '../api/registrations.js'
 import EventForm from '../components/EventForm.jsx'
-import EventArtwork from '../components/EventArtwork.jsx'
+import EventCover from '../components/EventCover.jsx'
+import EventImageGallery from '../components/EventImageGallery.jsx'
 import EditorModal from '../components/EditorModal.jsx'
 import EventErrorMessage from '../components/EventErrorMessage.jsx'
 import RegistrationNotice from '../components/RegistrationNotice.jsx'
@@ -118,10 +119,10 @@ export default function EventDetailsPage() {
 
   const canRegister = isEventOpenForRegistration(event)
 
-  async function handleSaveEvent(values) {
+  async function handleSaveEvent(values, images) {
     setEventAction({ status: 'saving', error: null })
     try {
-      await saveEventChanges(event.id, { ...values, version: event.version })
+      await saveEventChanges(event.id, { ...values, version: event.version }, images)
       navigate(getEventEditorLocation(location.pathname, location.search, false), { replace: true })
       setEventAction({ status: 'saved', error: null })
     } catch (requestError) {
@@ -253,7 +254,7 @@ export default function EventDetailsPage() {
     <div className="event-detail-page">
       <Link className="text-link event-back-link" to={`/events${location.search}`}>← Volver a eventos</Link>
       <article className="event-detail-editorial">
-        <EventArtwork title={event.title} variant="detail" />
+        <EventCover event={event} variant="detail" />
         <div className="event-detail-copy">
           <p className="eyebrow">{getEventStatusLabel(event.status)}</p>
           <h1>{event.title}</h1>
@@ -357,6 +358,7 @@ export default function EventDetailsPage() {
           {!canRegister && !registration.registered && <p className="event-neutral-note">Este evento no está aceptando inscripciones.</p>}
         </div>
       </article>
+      <EventImageGallery event={event} />
 
       <section aria-labelledby="sessions-heading" className="event-sessions-section">
         <header>

@@ -1,7 +1,8 @@
 /** Render the shared create and edit form using the backend event fields. */
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ErrorMessage } from './RequestFeedback.jsx'
+import EventCover from './EventCover.jsx'
 import { toLocalDateTimeValue, validateEventForm } from '../utils/eventForm.js'
 
 const EVENT_STATUS_OPTIONS = [
@@ -10,6 +11,9 @@ const EVENT_STATUS_OPTIONS = [
   ['cancelled', 'Cancelado'],
   ['completed', 'Finalizado'],
 ]
+const MAX_IMAGE_COUNT = 10
+const MAX_IMAGE_SIZE = 5 * 1024 * 1024
+const ACCEPTED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp'])
 
 /** Submit normalized values and expose accessible client/server validation. */
 export default function EventForm({
@@ -20,7 +24,15 @@ export default function EventForm({
   onSubmit,
 }) {
   const [validationErrors, setValidationErrors] = useState({})
+  const [selectedImages, setSelectedImages] = useState([])
+  const [imageError, setImageError] = useState('')
+  const selectedImagesRef = useRef(selectedImages)
   const isEditing = Boolean(event)
+
+  useEffect(() => {
+    selectedImagesRef.current = selectedImages
+  }, [selectedImages])
+  useEffect(() => () => selectedImagesRef.current.forEach((image) => URL.revokeObjectURL(image.preview)), [])
 
   async function handleSubmit(submitEvent) {
     submitEvent.preventDefault()
@@ -28,7 +40,37 @@ export default function EventForm({
     const result = validateEventForm(Object.fromEntries(formData.entries()))
     setValidationErrors(result.errors)
     if (!result.payload) return
-    await onSubmit(result.payload)
+    await onSubmit(result.payload, selectedImages.map(({ file }) => file))
+  }
+
+  function handleImageSelection(changeEvent) {
+    const files = Array.from(changeEvent.target.files || [])
+    const total = selectedImages.length + files.length
+    if (total > MAX_IMAGE_COUNT) {
+      setImageError(`Puedes seleccionar hasta ${MAX_IMAGE_COUNT} imágenes.`)
+      changeEvent.target.value = ''
+      return
+    }
+    const invalidFile = files.find((file) => !ACCEPTED_IMAGE_TYPES.has(file.type) || file.size > MAX_IMAGE_SIZE)
+    if (invalidFile) {
+      setImageError('Selecciona imágenes JPEG, PNG o WebP de máximo 5 MB cada una.')
+      changeEvent.target.value = ''
+      return
+    }
+    setImageError('')
+    setSelectedImages((current) => [...current, ...files.map((file) => ({
+      file,
+      preview: URL.createObjectURL(file),
+    }))])
+    changeEvent.target.value = ''
+  }
+
+  function removeImage(index) {
+    setSelectedImages((current) => {
+      const removed = current[index]
+      if (removed) URL.revokeObjectURL(removed.preview)
+      return current.filter((_, imageIndex) => imageIndex !== index)
+    })
   }
 
   function fieldProps(name) {
@@ -89,6 +131,51 @@ export default function EventForm({
           {validationErrors.status && <span className="field-error" id="status-error">{validationErrors.status}</span>}
         </label>
         </div>
+      </fieldset>
+      <fieldset className="editor-form-group">
+        <legend>Imágenes del evento <span className="field-hint">Opcional · hasta 10 imágenes, 5 MB cada una</span></legend>
+        {isEditing && event.images?.length > 0 && selectedImages.length === 0 && (
+          <div aria-label="Galería actual; se conservará si no seleccionas imágenes nuevas" className="event-current-images">
+            <div>
+              <h3>Portada actual</h3>
+              <EventCover event={event} variant="editor" />
+            </div>
+            {event.images.some((image) => image.position !== 0) && (
+              <div>
+                <h3>Otras imágenes actuales</h3>
+                <div className="event-image-grid event-image-grid-compact">
+                  {[...event.images].filter((image) => image.position !== 0).sort((a, b) => a.position - b.position).map((image, index) => (
+                    <img alt={`${event.title}, imagen ${index + 2}`} key={`${image.position}-${image.url}`} src={image.url} />
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+        <label className="editor-form-field-full" htmlFor="event-images">
+          {isEditing ? 'Seleccionar imágenes para reemplazar la galería' : 'Seleccionar imágenes'}
+          <input
+            accept="image/jpeg,image/png,image/webp"
+            id="event-images"
+            multiple
+            onChange={handleImageSelection}
+            type="file"
+          />
+        </label>
+        {imageError && <p className="field-error" role="alert">{imageError}</p>}
+        {selectedImages.length > 0 && (
+          <div aria-label="Previsualizaciones de imágenes seleccionadas" className="event-image-grid">
+            {selectedImages.map(({ file, preview }, index) => (
+              <figure key={`${file.name}-${index}`}>
+                <img alt={`Previsualización: ${file.name}`} src={preview} />
+                <figcaption>
+                  <span>{file.name}</span>
+                  <button aria-label={`Quitar ${file.name}`} className="button button-secondary" onClick={() => removeImage(index)} type="button">Quitar</button>
+                </figcaption>
+              </figure>
+            ))}
+          </div>
+        )}
       </fieldset>
       <div className="button-row event-form-actions">
         <button className="button button-primary" disabled={isSubmitting} type="submit">

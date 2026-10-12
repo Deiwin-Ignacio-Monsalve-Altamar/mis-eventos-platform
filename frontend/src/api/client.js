@@ -22,6 +22,7 @@ export async function request(path, options = {}) {
   const { body, headers = {}, ...requestOptions } = options
   const startedAt = globalThis.performance?.now?.() ?? Date.now()
   const method = (requestOptions.method || 'GET').toUpperCase()
+  const isFormData = typeof FormData !== 'undefined' && body instanceof FormData
   let response
 
   try {
@@ -29,10 +30,10 @@ export async function request(path, options = {}) {
       ...requestOptions,
       credentials: 'include',
       headers: {
-        ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+        ...(body === undefined || isFormData ? {} : { 'Content-Type': 'application/json' }),
         ...headers,
       },
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      ...(body === undefined ? {} : { body: isFormData ? body : JSON.stringify(body) }),
     })
   } catch (error) {
     reportApiDuration(((globalThis.performance?.now?.() ?? Date.now()) - startedAt) / 1000, method)

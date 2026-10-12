@@ -113,10 +113,10 @@ export function AppProvider({ children }) {
     }
   }, [])
 
-  const submitEvent = useCallback(async (eventData) => {
+  const submitEvent = useCallback(async (eventData, images = []) => {
     dispatch({ type: 'event-creation/loading' })
     try {
-      const event = await createEvent(eventData)
+      const event = await createEvent(eventData, images)
       eventsRequestId.current += 1
       eventRequestId.current += 1
       dispatch({ type: 'event-creation/success', event })
@@ -127,10 +127,10 @@ export function AppProvider({ children }) {
     }
   }, [])
 
-  const saveEventChanges = useCallback(async (eventId, eventData) => {
+  const saveEventChanges = useCallback(async (eventId, eventData, images = []) => {
     dispatch({ type: 'event-updating/loading' })
     try {
-      const event = await updateEvent(eventId, eventData)
+      const event = await updateEvent(eventId, eventData, images)
       eventsRequestId.current += 1
       eventRequestId.current += 1
       dispatch({ type: 'event-updating/success', event })

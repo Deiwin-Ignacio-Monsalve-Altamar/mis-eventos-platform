@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { listMyEvents } from '../api/events.js'
-import EventArtwork from '../components/EventArtwork.jsx'
+import EventCover from '../components/EventCover.jsx'
 import { EmptyMessage, ErrorMessage, LoadingMessage } from '../components/RequestFeedback.jsx'
 import PaginationControls from '../components/PaginationControls.jsx'
 import useAppState from '../state/useAppState.js'
@@ -120,7 +120,7 @@ export default function MyEventsPage() {
       {result?.events.length > 0 && <div className="organizer-event-list">
         {result.events.map((event) => (
           <article className="organizer-event-card" key={event.id}>
-            <EventArtwork title={event.title} />
+            <EventCover event={event} variant="organizer" />
             <div className="organizer-event-copy">
               <span className={`status-badge status-${event.status}`}>{getEventStatusLabel(event.status)}</span>
               <h2><Link to={`/events/${event.id}`}>{event.title}</Link></h2>
