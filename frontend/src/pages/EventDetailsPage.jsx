@@ -2,7 +2,7 @@
 
 import { useEffect, useReducer, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
-import { createEventSession, deleteEventSession, getEventCapacity, getMyEvent, updateEventSession } from '../api/events.js'
+import { createEventSession, deleteEventSession, getEventCapacity, updateEventSession } from '../api/events.js'
 import { cancelMyEventRegistration, findMyEventRegistration, registerForEvent } from '../api/registrations.js'
 import EventForm from '../components/EventForm.jsx'
 import EventCover from '../components/EventCover.jsx'
@@ -39,6 +39,7 @@ export default function EventDetailsPage() {
   const [sessionAction, setSessionAction] = useState({ status: 'idle', error: null, deletingId: null })
   const registrationRequest = useRef(false)
   const sessionRequest = useRef(false)
+  const eventMutationRequest = useRef(false)
   const ownerRequestKey = `${auth.status}:${auth.user?.id ?? ''}:${event?.id ?? ''}`
   const ownerAccess = ownerResult?.key === ownerRequestKey ? ownerResult.status : 'checking'
   const currentCapacityQuery = capacityQuery?.eventId === event?.id
@@ -54,9 +55,26 @@ export default function EventDetailsPage() {
 
   useEffect(() => {
     if (!/^\d+$/.test(eventId || '') || Number(eventId) < 1) return
-    loadEvent(eventId)
-    loadEventSessions(eventId)
-  }, [eventId, loadEvent, loadEventSessions])
+    if (auth.status === 'loading') return
+    const ownerOnly = auth.status === 'authenticated'
+      && ['ORGANIZER', 'ADMIN'].includes(auth.user?.role)
+    let active = true
+    loadEvent(eventId, { ownerOnly }).then((loadedEvent) => {
+      if (active && ownerOnly) {
+        setOwnerResult({
+          key: `${auth.status}:${auth.user?.id ?? ''}:${eventId}`,
+          status: loadedEvent ? 'owner' : 'denied',
+        })
+      }
+    })
+    return () => { active = false }
+  }, [auth.status, auth.user?.id, auth.user?.role, eventId, loadEvent])
+
+  useEffect(() => {
+    if (!event?.id || event.status !== 'published') return undefined
+    loadEventSessions(event.id)
+    return undefined
+  }, [event?.id, event?.status, loadEventSessions])
 
   useEffect(() => {
     if (!event?.id) return undefined
@@ -71,19 +89,6 @@ export default function EventDetailsPage() {
       })
     return () => { active = false }
   }, [event?.id, availabilityRevision])
-
-  useEffect(() => {
-    if (!event?.id || auth.status !== 'authenticated') return undefined
-    let active = true
-    getMyEvent(event.id)
-      .then(() => {
-        if (active) setOwnerResult({ key: ownerRequestKey, status: 'owner' })
-      })
-      .catch((requestError) => {
-        if (active) setOwnerResult({ key: ownerRequestKey, status: 'denied', error: requestError })
-      })
-    return () => { active = false }
-  }, [auth.status, auth.user?.id, event?.id, ownerRequestKey])
 
   useEffect(() => {
     let active = true
@@ -119,14 +124,29 @@ export default function EventDetailsPage() {
 
   const canRegister = isEventOpenForRegistration(event)
 
-  async function handleSaveEvent(values, images) {
+  async function handleSaveEvent(values, images, action = 'save') {
+    if (eventMutationRequest.current) return
+    eventMutationRequest.current = true
     setEventAction({ status: 'saving', error: null })
     try {
-      await saveEventChanges(event.id, { ...values, version: event.version }, images)
-      navigate(getEventEditorLocation(location.pathname, location.search, false), { replace: true })
+      const savedEvent = await saveEventChanges(event.id, { ...values, version: event.version }, images)
+      if (action === 'publish' && savedEvent.status !== 'published') {
+        setEventAction({
+          status: 'error',
+          error: { code: 'publish_not_confirmed', message: 'El servidor no confirmó la publicación. Tus cambios siguen en el formulario.' },
+        })
+        return
+      }
       setEventAction({ status: 'saved', error: null })
+      if (action === 'publish' && auth.user?.role === 'ORGANIZER') {
+        navigate('/my-events', { replace: true })
+      } else {
+        navigate(getEventEditorLocation(location.pathname, location.search, false), { replace: true })
+      }
     } catch (requestError) {
       setEventAction({ status: 'error', error: requestError })
+    } finally {
+      eventMutationRequest.current = false
     }
   }
 
@@ -370,7 +390,7 @@ export default function EventDetailsPage() {
       <section aria-labelledby="sessions-heading" className="event-sessions-section" id="event-sessions">
         <header>
           <div><p className="eyebrow">La agenda</p><h2 id="sessions-heading">Sesiones del evento</h2></div>
-          {isOwner && sessionEditor === undefined && (
+          {isOwner && event.status === 'published' && sessionEditor === undefined && (
             <button className="button button-secondary" disabled={sessionAction.status === 'saving' || sessionAction.status === 'deleting'} onClick={() => {
               setSessionAction({ status: 'idle', error: null, deletingId: null })
               setSessionEditor(null)
@@ -401,22 +421,24 @@ export default function EventDetailsPage() {
         )}
         {sessionAction.status === 'saved' && <p className="feedback feedback-success" role="status">Los cambios de la sesión quedaron guardados.</p>}
         {sessionAction.status === 'error' && sessionEditor === undefined && <EventErrorMessage error={sessionAction.error} />}
-        <SessionList
-          busy={sessionAction.status === 'saving' || sessionAction.status === 'deleting'}
-          canManage={isOwner}
-          deletingId={sessionAction.deletingId}
-          error={sessionsError}
-          eventId={event.id}
-          onDelete={handleDeleteSession}
-          onEdit={(session) => {
-            setSessionAction({ status: 'idle', error: null, deletingId: null })
-            setSessionEditor(session)
-          }}
-          onRetry={() => loadEventSessions(event.id)}
-          sessions={sessions}
-          status={sessionsStatus}
-          refreshKey={availabilityRevision}
-        />
+        {event.status === 'published'
+          ? <SessionList
+              busy={sessionAction.status === 'saving' || sessionAction.status === 'deleting'}
+              canManage={isOwner}
+              deletingId={sessionAction.deletingId}
+              error={sessionsError}
+              eventId={event.id}
+              onDelete={handleDeleteSession}
+              onEdit={(session) => {
+                setSessionAction({ status: 'idle', error: null, deletingId: null })
+                setSessionEditor(session)
+              }}
+              onRetry={() => loadEventSessions(event.id)}
+              sessions={sessions}
+              status={sessionsStatus}
+              refreshKey={availabilityRevision}
+            />
+          : <p className="event-neutral-note" role="status">La agenda se podrá consultar y administrar cuando el evento esté publicado. Los cambios de información no modifican las sesiones guardadas.</p>}
       </section>
     </div>
   )

@@ -28,6 +28,8 @@ export default function EventForm({
   const [imageError, setImageError] = useState('')
   const selectedImagesRef = useRef(selectedImages)
   const isEditing = Boolean(event)
+  const serverValidationErrors = getServerValidationErrors(error)
+  const fieldErrors = { ...serverValidationErrors, ...validationErrors }
 
   useEffect(() => {
     selectedImagesRef.current = selectedImages
@@ -40,7 +42,9 @@ export default function EventForm({
     const result = validateEventForm(Object.fromEntries(formData.entries()))
     setValidationErrors(result.errors)
     if (!result.payload) return
-    await onSubmit(result.payload, selectedImages.map(({ file }) => file))
+    const action = submitEvent.nativeEvent.submitter?.value === 'publish' ? 'publish' : 'save'
+    const payload = action === 'publish' ? { ...result.payload, status: 'published' } : result.payload
+    await onSubmit(payload, selectedImages.map(({ file }) => file), action)
   }
 
   function handleImageSelection(changeEvent) {
@@ -75,15 +79,18 @@ export default function EventForm({
 
   function fieldProps(name) {
     return {
-      'aria-describedby': validationErrors[name] ? `${name}-error` : undefined,
-      'aria-invalid': Boolean(validationErrors[name]),
+      'aria-describedby': fieldErrors[name] ? `${name}-error` : undefined,
+      'aria-invalid': Boolean(fieldErrors[name]),
     }
   }
 
   return (
     <form className="app-form event-form" noValidate onSubmit={handleSubmit}>
       {error && <ErrorMessage error={error} />}
-      {Object.keys(validationErrors).length > 0 && (
+      {error?.code === 'validation_error' && error.message && (
+        <p className="field-error" role="status">El servidor rechazó los cambios: {error.message}</p>
+      )}
+      {Object.keys(fieldErrors).length > 0 && (
         <p className="field-error" role="alert">Revisa los campos señalados antes de guardar.</p>
       )}
       <fieldset className="editor-form-group">
@@ -92,7 +99,7 @@ export default function EventForm({
           <label className="editor-form-field-full" htmlFor="event-title">
             Nombre del evento
             <input {...fieldProps('title')} autoComplete="off" id="event-title" maxLength="200" name="title" required defaultValue={event?.title || ''} />
-            {validationErrors.title && <span className="field-error" id="title-error">{validationErrors.title}</span>}
+            {fieldErrors.title && <span className="field-error" id="title-error">{fieldErrors.title}</span>}
           </label>
           <label className="editor-form-field-full" htmlFor="event-description">
             Descripción <span className="field-hint">Opcional</span>
@@ -101,7 +108,7 @@ export default function EventForm({
           <label className="editor-form-field-full" htmlFor="event-location">
             Lugar <span className="field-hint">Opcional; máximo 255 caracteres</span>
             <input {...fieldProps('location')} id="event-location" maxLength="255" name="location" defaultValue={event?.location || ''} />
-            {validationErrors.location && <span className="field-error" id="location-error">{validationErrors.location}</span>}
+            {fieldErrors.location && <span className="field-error" id="location-error">{fieldErrors.location}</span>}
           </label>
         </div>
       </fieldset>
@@ -111,24 +118,24 @@ export default function EventForm({
         <label htmlFor="event-starts-at">
           Fecha y hora de inicio
           <input {...fieldProps('starts_at')} id="event-starts-at" name="starts_at" required type="datetime-local" defaultValue={event ? toLocalDateTimeValue(event.starts_at) : ''} />
-          {validationErrors.starts_at && <span className="field-error" id="starts_at-error">{validationErrors.starts_at}</span>}
+          {fieldErrors.starts_at && <span className="field-error" id="starts_at-error">{fieldErrors.starts_at}</span>}
         </label>
         <label htmlFor="event-ends-at">
           Fecha y hora de finalización
           <input {...fieldProps('ends_at')} id="event-ends-at" name="ends_at" required type="datetime-local" defaultValue={event ? toLocalDateTimeValue(event.ends_at) : ''} />
-          {validationErrors.ends_at && <span className="field-error" id="ends_at-error">{validationErrors.ends_at}</span>}
+          {fieldErrors.ends_at && <span className="field-error" id="ends_at-error">{fieldErrors.ends_at}</span>}
         </label>
         <label htmlFor="event-capacity">
           Capacidad
           <input {...fieldProps('capacity')} id="event-capacity" min="1" name="capacity" required type="number" defaultValue={event?.capacity ?? ''} />
-          {validationErrors.capacity && <span className="field-error" id="capacity-error">{validationErrors.capacity}</span>}
+          {fieldErrors.capacity && <span className="field-error" id="capacity-error">{fieldErrors.capacity}</span>}
         </label>
         <label htmlFor="event-status">
           Estado
           <select {...fieldProps('status')} defaultValue={event?.status || 'draft'} id="event-status" name="status">
             {EVENT_STATUS_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
           </select>
-          {validationErrors.status && <span className="field-error" id="status-error">{validationErrors.status}</span>}
+          {fieldErrors.status && <span className="field-error" id="status-error">{fieldErrors.status}</span>}
         </label>
         </div>
       </fieldset>
@@ -181,8 +188,26 @@ export default function EventForm({
         <button className="button button-primary" disabled={isSubmitting} type="submit">
           {isSubmitting ? 'Guardando…' : isEditing ? 'Guardar cambios' : 'Crear evento'}
         </button>
+        {isEditing && event.status === 'draft' && (
+          <button className="button button-secondary" disabled={isSubmitting} name="action" type="submit" value="publish">
+            {isSubmitting ? 'Publicando…' : 'Publicar evento'}
+          </button>
+        )}
         {onCancel && <button className="button button-secondary" disabled={isSubmitting} onClick={onCancel} type="button">Cancelar</button>}
       </div>
     </form>
   )
+}
+
+/** Attach backend validation messages to fields when its existing message names one. */
+function getServerValidationErrors(error) {
+  if (error?.code !== 'validation_error' || !error.message) return {}
+  const message = error.message
+  const normalized = message.toLowerCase()
+  const field = ['title', 'description', 'location', 'starts_at', 'ends_at', 'capacity', 'status']
+    .find((name) => normalized.startsWith(`${name} `))
+  if (field) return { [field]: message }
+  if (normalized.startsWith('capacity cannot be lower')) return { capacity: message }
+  if (normalized.startsWith('the event schedule cannot exclude')) return { starts_at: message, ends_at: message }
+  return {}
 }
