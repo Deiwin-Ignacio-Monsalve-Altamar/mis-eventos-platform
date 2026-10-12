@@ -8,7 +8,7 @@ import useAppState from '../state/useAppState.js'
 import { validateLogin } from './authValidation.js'
 
 /** Submit login credentials without persisting them in browser storage. */
-export default function LoginPage() {
+export default function LoginPage({ defaultDestination = '/profile' }) {
   const { state, signIn } = useAppState()
   const navigate = useNavigate()
   const location = useLocation()
@@ -29,7 +29,7 @@ export default function LoginPage() {
     setSubmitting(true)
     try {
       await signIn(credentials)
-      navigate(location.state?.from || '/profile', { replace: true })
+      navigate(location.state?.from || defaultDestination, { replace: true })
     } catch {
       // The provider stores the shared authentication error for display.
     } finally {
