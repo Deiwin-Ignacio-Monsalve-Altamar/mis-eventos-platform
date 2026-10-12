@@ -42,6 +42,16 @@ make run
 
 `make run` checks and prepares local files again and validates Docker/Compose before starting services. It builds or reuses image layers, starts PostgreSQL, waits for its `pg_isready` healthcheck, runs `alembic upgrade head` in a one-shot migration service, and only then starts the backend and frontend. Startup fails if migration fails; it does not generate migration revisions or delete data, and it preserves the `postgres_data` volume. You can rerun `make run` after correcting a failure.
 
+After the migration succeeds, `make run` initializes three deterministic demonstration accounts and verifies the backend, frontend, and API documentation are ready. Sign in at <http://localhost:5173/login>:
+
+| Role | Email | Password |
+| --- | --- | --- |
+| ADMIN | `admin.demo@mis-eventos.local` | `DemoAdmin-2026!` |
+| ORGANIZER | `organizer.demo@mis-eventos.local` | `DemoOrganizer-2026!` |
+| ATTENDEE | `attendee.demo@mis-eventos.local` | `DemoAttendee-2026!` |
+
+These demonstration credentials are for local development only and must never be used in production. `make run` requires `APP_ENVIRONMENT=local`, and the backend command independently rejects every other environment. Existing accounts are never changed; if a demonstration email already has different account data, initialization stops with an error.
+
 Local URLs (ports from `docker-compose.yml`):
 
 - Frontend: <http://localhost:5173>
