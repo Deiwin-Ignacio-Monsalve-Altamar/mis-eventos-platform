@@ -93,10 +93,20 @@ test('event cards, pagination, sessions, artwork, and feedback render shared sta
     const detailCover = renderToString(createElement(EventCover, { event, variant: 'detail' }))
     const secondaryGallery = renderToString(createElement(EventImageGallery, { event }))
     const fallbackCover = renderToString(createElement(EventCover, { event: { title: 'Sin imágenes', images: [] }, variant: 'detail' }))
+    const emptyUrlCover = renderToString(createElement(EventCover, {
+      event: { title: 'URL vacía', images: [{ url: '  ', position: 0 }] },
+    }))
+    const invalidUrlCover = renderToString(createElement(EventCover, {
+      event: { title: 'URL inválida', images: [{ url: 'javascript:alert(1)', position: 0 }] },
+    }))
     assert.match(detailCover, /src="https:\/\/cdn.test\/cover.webp"/)
     assert.match(secondaryGallery, /second.webp/)
     assert.doesNotMatch(secondaryGallery, /cover.webp/)
     assert.match(fallbackCover, /event-artwork-detail/)
+    assert.match(emptyUrlCover, /event-artwork-card/)
+    assert.doesNotMatch(emptyUrlCover, /<img/)
+    assert.match(invalidUrlCover, /event-artwork-card/)
+    assert.doesNotMatch(invalidUrlCover, /<img/)
     assert.match(renderToString(createElement(feedback.LoadingMessage, null, 'Cargando perfil…')), /aria-live="polite"/)
     assert.match(renderToString(createElement(feedback.EmptyMessage, null, 'Sin inscripciones')), /Sin inscripciones/)
     assert.match(
