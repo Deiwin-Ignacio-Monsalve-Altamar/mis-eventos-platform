@@ -99,6 +99,7 @@ components:
         - capacity
         - status
         - version
+        - images
       properties:
         id:
           type: integer
@@ -135,6 +136,18 @@ components:
         version:
           type: integer
           example: 1
+        images:
+          type: array
+          items:
+            type: object
+            required: [url, position]
+            properties:
+              url:
+                type: string
+                format: uri
+              position:
+                type: integer
+                minimum: 0
 
     Session:
       type: object
@@ -607,6 +620,21 @@ paths:
                   type: string
                   enum: [draft, published, cancelled, completed]
                   default: draft
+          multipart/form-data:
+            schema:
+              type: object
+              required: [event]
+              properties:
+                event:
+                  type: string
+                  description: JSON-encoded event fields.
+                images:
+                  type: array
+                  maxItems: 10
+                  items:
+                    type: string
+                    format: binary
+                  description: Optional image files; each must be 5 MB or smaller.
       responses:
         "201":
           description: Event created.
@@ -630,7 +658,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
         "503":
-          description: Authentication unavailable.
+          description: Authentication or image storage unavailable.
           content:
             application/json:
               schema:
@@ -704,6 +732,21 @@ paths:
                 version:
                   type: integer
                   minimum: 1
+          multipart/form-data:
+            schema:
+              type: object
+              required: [event]
+              properties:
+                event:
+                  type: string
+                  description: JSON-encoded fields, including the required version.
+                images:
+                  type: array
+                  maxItems: 10
+                  items:
+                    type: string
+                    format: binary
+                  description: Optional replacement image files; each must be 5 MB or smaller.
       responses:
         "200":
           description: Event updated.
@@ -745,7 +788,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ConcurrencyConflict"
         "503":
-          description: Authentication unavailable.
+          description: Authentication or image storage unavailable.
           content:
             application/json:
               schema:

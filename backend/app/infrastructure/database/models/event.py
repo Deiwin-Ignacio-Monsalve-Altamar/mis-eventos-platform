@@ -50,6 +50,12 @@ class Event(db.Model):
     sessions = db.relationship(
         "EventSession", back_populates="event", cascade="all, delete-orphan"
     )
+    images = db.relationship(
+        "EventImage",
+        back_populates="event",
+        cascade="all, delete-orphan",
+        order_by="EventImage.position",
+    )
     registrations = db.relationship(
         "Registration", back_populates="event", cascade="all, delete-orphan"
     )

@@ -5,6 +5,7 @@ from flask import current_app
 from app.application.administration.analytics_service import AdminAnalyticsService
 from app.application.administration.service import AdministrationService
 from app.application.auth.service import AuthService
+from app.application.events.image_service import EventImageService
 from app.application.events.service import EventService
 from app.application.health.service import HealthService
 from app.application.registrations.service import EventRegistrationService
@@ -14,6 +15,9 @@ from app.extensions import db
 from app.infrastructure.health.repository import HealthRepository
 from app.infrastructure.repositories.sqlalchemy_admin_analytics_repository import (
     SQLAlchemyAdminAnalyticsRepository,
+)
+from app.infrastructure.repositories.sqlalchemy_event_image_repository import (
+    SQLAlchemyEventImageRepository,
 )
 from app.infrastructure.repositories.sqlalchemy_event_registration_repository import (
     SQLAlchemyEventRegistrationRepository,
@@ -30,6 +34,7 @@ from app.infrastructure.repositories.sqlalchemy_session_repository import (
 from app.infrastructure.repositories.sqlalchemy_user_repository import (
     SQLAlchemyUserRepository,
 )
+from app.infrastructure.storage.r2 import create_r2_client
 
 
 def get_health_service() -> HealthService:
@@ -60,7 +65,15 @@ def get_admin_analytics_service() -> AdminAnalyticsService:
 
 def get_event_service() -> EventService:
     """Build the event application service with the current database session."""
-    return EventService(event_repository=SQLAlchemyEventRepository(session=db.session))
+    image_service = EventImageService(
+        repository=SQLAlchemyEventImageRepository(session=db.session),
+        config=current_app.config,
+        client_factory=lambda: create_r2_client(current_app.config),
+    )
+    return EventService(
+        event_repository=SQLAlchemyEventRepository(session=db.session),
+        event_image_service=image_service,
+    )
 
 
 def get_session_service() -> SessionService:

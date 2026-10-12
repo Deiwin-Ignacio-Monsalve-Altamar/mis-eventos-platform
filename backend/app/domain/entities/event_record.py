@@ -3,6 +3,8 @@
 from dataclasses import dataclass
 from datetime import datetime
 
+from app.domain.entities.event_image import EventImageRecord
+
 
 @dataclass(frozen=True, slots=True)
 class EventRecord:
@@ -18,3 +20,4 @@ class EventRecord:
     status: str = "draft"
     id: int | None = None
     version: int = 1
+    images: tuple[EventImageRecord, ...] = ()

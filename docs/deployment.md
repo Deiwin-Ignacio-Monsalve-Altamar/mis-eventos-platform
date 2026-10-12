@@ -43,8 +43,8 @@ frontend values as build-time variables in the static host.
 | `R2_ACCOUNT_ID` | Backend | Required when R2 is used | Cloudflare account identifier used to form the S3 endpoint. |
 | `R2_ACCESS_KEY_ID` | Backend secret | Required when R2 is used | R2 S3 API access key ID; store in Render's private environment settings. |
 | `R2_SECRET_ACCESS_KEY` | Backend secret | Required when R2 is used | R2 S3 API secret access key; store in Render's private environment settings. |
-| `R2_BUCKET_NAME` | Backend | Required when R2 is used | Existing bucket the application is authorized to access. The app does not create buckets. |
-| `R2_PUBLIC_BASE_URL` | Backend | Optional | Public base URL for constructing public image URLs when that design is implemented. |
+| `R2_BUCKET_NAME` | Backend | Required when event images are uploaded | Existing bucket the application is authorized to access. The app does not create buckets. |
+| `R2_PUBLIC_BASE_URL` | Backend | Required when event images are uploaded | Public CDN base URL, separate from the S3 API endpoint, used to construct image URLs. |
 
 The root `.env.example` contains local development values. Do not copy its
 database credentials into a hosted service. The `VITE_*` values are public and

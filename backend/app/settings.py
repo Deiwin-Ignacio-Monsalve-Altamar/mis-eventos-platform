@@ -17,6 +17,12 @@ R2_SECRET_ACCESS_KEY_ENV = "R2_SECRET_ACCESS_KEY"
 R2_BUCKET_NAME_ENV = "R2_BUCKET_NAME"
 R2_PUBLIC_BASE_URL_ENV = "R2_PUBLIC_BASE_URL"
 
+# Event image upload limits
+MAX_EVENT_IMAGE_SIZE_BYTES = 5 * 1024 * 1024
+MAX_EVENT_IMAGE_COUNT = 10
+MAX_EVENT_IMAGE_REQUEST_SIZE_BYTES = 52 * 1024 * 1024
+ALLOWED_EVENT_IMAGE_FORMATS = frozenset({"JPEG", "PNG", "WEBP"})
+
 # Runtime defaults
 DEFAULT_DATABASE_URL = (
     "postgresql+psycopg://mis_eventos:mis_eventos_dev@localhost:5432/mis_eventos"

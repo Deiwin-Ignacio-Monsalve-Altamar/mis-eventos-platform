@@ -54,6 +54,10 @@ class ValidationError(BusinessRuleError):
     """Raised when submitted account data fails validation."""
 
 
+class EventImageStorageError(RuntimeError):
+    """Raised when event image storage or metadata persistence fails."""
+
+
 class DuplicateAccountError(BusinessRuleError):
     """Raised when an account already exists for the submitted email."""
 

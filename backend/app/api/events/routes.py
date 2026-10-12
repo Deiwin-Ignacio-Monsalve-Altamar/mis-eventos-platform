@@ -1,5 +1,6 @@
 """Expose authenticated endpoints for creating and editing events."""
 
+import json
 from http import HTTPStatus
 
 from flask import Blueprint, g, jsonify, request
@@ -13,6 +14,7 @@ from app.core.exceptions import (
     ConcurrencyConflictError,
     DuplicateRegistrationError,
     EventCapacityExceededError,
+    EventImageStorageError,
     EventUnavailableError,
     NotFoundError,
     RelatedRecordsError,
@@ -139,18 +141,32 @@ def get_my_event(event_id: int):
 @roles_required(UserRole.ORGANIZER, UserRole.ADMIN)
 def create_event():
     """Create an event attributed to the authenticated user."""
-    request_data = request.get_json(silent=True)
+    request_data, image_files = _event_request_data()
     if not isinstance(request_data, dict):
         return error_response(
             "invalid_request", "A JSON object is required.", HTTPStatus.BAD_REQUEST
         )
 
     try:
-        event = get_event_service().create(
-            _editable_values(request_data), creator_id=g.current_user.id
-        )
+        service = get_event_service()
+        if image_files:
+            event = service.create(
+                _editable_values(request_data),
+                creator_id=g.current_user.id,
+                image_files=image_files,
+            )
+        else:
+            event = service.create(
+                _editable_values(request_data), creator_id=g.current_user.id
+            )
     except ValidationError as error:
         return error_response("validation_error", str(error), HTTPStatus.BAD_REQUEST)
+    except EventImageStorageError:
+        return error_response(
+            "image_storage_unavailable",
+            "Event images could not be stored.",
+            HTTPStatus.SERVICE_UNAVAILABLE,
+        )
 
     return jsonify({"event": _serialize_event(event)}), HTTPStatus.CREATED
 
@@ -160,7 +176,7 @@ def create_event():
 @roles_required(UserRole.ORGANIZER, UserRole.ADMIN)
 def update_event(event_id: int):
     """Update supplied fields on an existing event after token validation."""
-    request_data = request.get_json(silent=True)
+    request_data, image_files = _event_request_data()
     if not isinstance(request_data, dict):
         return error_response(
             "invalid_request", "A JSON object is required.", HTTPStatus.BAD_REQUEST
@@ -178,13 +194,25 @@ def update_event(event_id: int):
         )
 
     try:
-        event = get_event_service().update(
-            event_id,
-            _editable_values(request_data),
-            expected_version,
-            creator_id=g.current_user.id,
-            is_admin=g.current_user.role is UserRole.ADMIN,
-        )
+        service = get_event_service()
+        update_values = _editable_values(request_data)
+        if image_files:
+            event = service.update(
+                event_id,
+                update_values,
+                expected_version,
+                creator_id=g.current_user.id,
+                is_admin=g.current_user.role is UserRole.ADMIN,
+                image_files=image_files,
+            )
+        else:
+            event = service.update(
+                event_id,
+                update_values,
+                expected_version,
+                creator_id=g.current_user.id,
+                is_admin=g.current_user.role is UserRole.ADMIN,
+            )
     except ConcurrencyConflictError as error:
         return concurrency_conflict_response(str(error), error.current_version)
     except ValidationError as error:
@@ -193,7 +221,12 @@ def update_event(event_id: int):
         return error_response("not_found", str(error), HTTPStatus.NOT_FOUND)
     except AuthorizationError as error:
         return error_response("forbidden", str(error), HTTPStatus.FORBIDDEN)
-
+    except EventImageStorageError:
+        return error_response(
+            "image_storage_unavailable",
+            "Event images could not be stored.",
+            HTTPStatus.SERVICE_UNAVAILABLE,
+        )
     return jsonify({"event": _serialize_event(event)}), HTTPStatus.OK
 
 
@@ -214,6 +247,12 @@ def delete_event(event_id: int):
         return error_response("related_records", str(error), HTTPStatus.CONFLICT)
     except AuthorizationError as error:
         return error_response("forbidden", str(error), HTTPStatus.FORBIDDEN)
+    except EventImageStorageError:
+        return error_response(
+            "image_storage_unavailable",
+            "Event images could not be stored.",
+            HTTPStatus.SERVICE_UNAVAILABLE,
+        )
 
     return "", HTTPStatus.NO_CONTENT
 
@@ -352,6 +391,20 @@ def _editable_values(request_data: dict[str, object]) -> dict[str, object]:
     return {key: value for key, value in request_data.items() if key in EDITABLE_FIELDS}
 
 
+def _event_request_data() -> tuple[dict[str, object] | None, list[object]]:
+    """Read JSON event fields from JSON or multipart event-plus-images requests."""
+    if request.mimetype == "multipart/form-data":
+        try:
+            request_data = json.loads(request.form.get("event", ""))
+        except (TypeError, ValueError):
+            request_data = None
+        return (
+            request_data if isinstance(request_data, dict) else None,
+            request.files.getlist("images"),
+        )
+    return request.get_json(silent=True), []
+
+
 def _serialize_event_page(page: EventPage) -> dict[str, object]:
     """Serialize an event page with the established pagination contract."""
     total_pages = (page.total + page.page_size - 1) // page.page_size
@@ -378,6 +431,9 @@ def _serialize_event(event: EventRecord) -> dict[str, object]:
         "capacity": event.capacity,
         "status": event.status,
         "version": event.version,
+        "images": [
+            {"url": image.url, "position": image.position} for image in event.images
+        ],
     }
 
 
