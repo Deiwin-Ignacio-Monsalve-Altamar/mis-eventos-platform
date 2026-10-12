@@ -74,7 +74,9 @@ test('fresh context without a cookie receives 401 and stays on login instead of 
   await page.goto('/')
 
   await expect(page).toHaveURL('/')
-  await expect(page.getByRole('heading', { name: '¡Qué bueno verte!' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Bienvenido de nuevo' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Los grandes momentos empiezan aquí' })).toBeVisible()
+  await expect(page.getByText('Descubre eventos, organiza experiencias y gestiona cada detalle desde un solo lugar')).toBeVisible()
   await expect(page.getByLabel('Correo electrónico')).toBeVisible()
   await expect(page.getByRole('link', { name: 'Crear una cuenta' })).toHaveAttribute('href', '/register')
   expect(sessionRequest.headers().cookie).toBeUndefined()
@@ -91,6 +93,20 @@ test('anonymous root shows login and public routes remain directly accessible', 
   await page.goto('/events')
   await expect(page.getByRole('heading', { name: 'Planes con otra energía' })).toBeVisible()
   await expect(page).toHaveURL('/events')
+})
+
+test('login cover and form stack without horizontal overflow on mobile', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await mockApi(page)
+  await page.goto('/')
+
+  await expect(page.getByRole('heading', { name: 'Los grandes momentos empiezan aquí' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Bienvenido de nuevo' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Iniciar sesión' })).toBeVisible()
+  const hasHorizontalOverflow = await page.evaluate(
+    () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
+  )
+  expect(hasHorizontalOverflow).toBe(false)
 })
 
 test('authenticated attendee root redirects to the public event catalogue', async ({ page }) => {
@@ -138,7 +154,7 @@ test('login and registration URLs stay available and admin URLs reject an attend
   await mockApi(page, { role: 'ATTENDEE', requests })
 
   await page.goto('/login')
-  await expect(page.getByRole('heading', { name: '¡Qué bueno verte!' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Bienvenido de nuevo' })).toBeVisible()
   await page.goto('/register')
   await expect(page.getByRole('heading', { name: 'Crea tu cuenta' })).toBeVisible()
 
