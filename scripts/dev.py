@@ -33,6 +33,7 @@ def command_output(command: list[str], cwd: Path = ROOT) -> tuple[int, str]:
     environment = os.environ.copy()
     if command[:2] == list(COMPOSE):
         environment.pop("JWT_SECRET_KEY", None)
+        environment.pop("APP_ENVIRONMENT", None)
     try:
         result = subprocess.run(
             command,
@@ -55,6 +56,7 @@ def run_command(command: list[str], cwd: Path = ROOT) -> int:
     environment = os.environ.copy()
     if command[:2] == list(COMPOSE):
         environment.pop("JWT_SECRET_KEY", None)
+        environment.pop("APP_ENVIRONMENT", None)
     try:
         return subprocess.run(
             command, cwd=cwd, env=environment, check=False
@@ -258,6 +260,21 @@ def ensure_local_environment() -> bool:
             print(f"Created {destination.relative_to(ROOT)} from its example template.")
         else:
             print(f"Preserving existing {destination.relative_to(ROOT)}.")
+    environment = read_environment_value(ROOT / ".env", "APP_ENVIRONMENT")
+    if environment is None:
+        with (ROOT / ".env").open("a", encoding="utf-8") as env_file:
+            content = (ROOT / ".env").read_text(encoding="utf-8")
+            if content and not content.endswith(("\n", "\r")):
+                env_file.write("\n")
+            env_file.write("APP_ENVIRONMENT=local\n")
+        print("Added APP_ENVIRONMENT=local to .env.")
+    elif environment != "local":
+        print(
+            "ERROR: APP_ENVIRONMENT in .env must be local for make setup/run. "
+            "If this value is intentional, keep it and use a separate local .env; "
+            "otherwise change it explicitly to APP_ENVIRONMENT=local."
+        )
+        return False
     if not write_missing_jwt_secret(ROOT / ".env"):
         return False
     required_values = ("POSTGRES_DB", "POSTGRES_USER", "POSTGRES_PASSWORD")
@@ -446,6 +463,12 @@ def up() -> int:
     """Build, start, migrate, and probe every configured Compose application service."""
     if not ensure_local_environment():
         return 1
+    if read_environment_value(ROOT / ".env", "APP_ENVIRONMENT") != "local":
+        print(
+            "ERROR: make run is restricted to APP_ENVIRONMENT=local; "
+            "demo accounts are disabled for every other environment."
+        )
+        return 1
     if not check_docker_tools():
         diagnose_failure("environment checks")
         return 1
@@ -459,6 +482,18 @@ def up() -> int:
     if not wait_for_database():
         diagnose_failure("database startup")
         return 1
+    code = run_command(
+        compose_command(
+            "exec", "-T", "backend", "poetry", "run", "flask", "--app",
+            "app.main:create_app", "init-demo-users",
+        )
+    )
+    if code != 0:
+        print(
+            "ERROR: local demo-user initialization failed. Review the account "
+            "conflict above, resolve it without deleting existing data, and rerun make run."
+        )
+        return code
     deadline = time.monotonic() + WAIT_TIMEOUT_SECONDS
     while time.monotonic() < deadline:
         if show_service_urls():

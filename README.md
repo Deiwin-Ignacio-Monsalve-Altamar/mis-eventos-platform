@@ -42,6 +42,16 @@ make run
 
 `make run` checks and prepares local files again and validates Docker/Compose before starting services. It builds or reuses image layers, starts PostgreSQL, waits for its `pg_isready` healthcheck, runs `alembic upgrade head` in a one-shot migration service, and only then starts the backend and frontend. Startup fails if migration fails; it does not generate migration revisions or delete data, and it preserves the `postgres_data` volume. You can rerun `make run` after correcting a failure.
 
+After the migration succeeds, `make run` initializes three deterministic demonstration accounts and verifies the backend, frontend, and API documentation are ready. Sign in at <http://localhost:5173/login>:
+
+| Role | Email | Password |
+| --- | --- | --- |
+| ADMIN | `admin@mis-eventos.test` | `admin1234` |
+| ORGANIZER | `organizador@mis-eventos.test` | `organizador_1234` |
+| ATTENDEE | `asisitidor@mis-eventos.test` | `asistidor_1234` |
+
+These demonstration credentials are for local development only and must never be used in production. `make run` requires `APP_ENVIRONMENT=local`, and the backend command independently rejects every other environment. Existing accounts are never changed; if a demonstration email already has a different role, initialization stops with an error. If an administrator already exists, `make run` keeps it and initializes only the missing organizer and attendee accounts.
+
 Local URLs (ports from `docker-compose.yml`):
 
 - Frontend: <http://localhost:5173>
@@ -49,6 +59,8 @@ Local URLs (ports from `docker-compose.yml`):
 - Backend/database readiness: <http://localhost:5000/api/v1/ready>
 - Swagger: <http://localhost:5000/apidocs/>
 - OpenAPI specification: <http://localhost:5000/apispec_1.json>
+
+The backend's published host port defaults to `5000`. To run another Compose project at the same time, set `BACKEND_HOST_PORT=5001` in that project's root `.env` and rerun `make run`. This changes only the host port; the backend and frontend continue communicating on the internal service port `5000`. `scripts/dev.py` reads the published port from Compose and uses it for its readiness checks and displayed URLs. Compose scopes container names and the PostgreSQL volume by project, so use distinct project directories when keeping multiple checkouts separate.
 
 ## Local configuration and external services
 
@@ -190,7 +202,7 @@ npm run build
 - **Missing `JWT_SECRET_KEY`:** run `make setup` or `make run`; both prepare `.env` and generate a local key. If an existing value is shorter than 32 bytes, correct it locally. Do not share `.env` or logs containing variables.
 - **Alembic not found:** `make setup` installs the main Poetry dependencies, which include Alembic. For manual execution, enter `backend/` and use `poetry run alembic ...`.
 - **Docker unavailable:** start Docker Desktop or the Docker service; check `docker info` and `docker compose version`.
-- **Port already in use:** free port 5432 (PostgreSQL), 5000 (API), or 5173 (Vite), or deliberately change the published port in `docker-compose.yml`; then rerun `make run`.
+- **Port already in use:** for a PostgreSQL host port conflict, set `POSTGRES_HOST_PORT=5433` in the local `.env` and rerun `make run`; PostgreSQL remains on internal port `5432` for Compose services. For a backend conflict, set `BACKEND_HOST_PORT=5001`; its internal port remains `5000`.
 - **Database unavailable:** `make status` and `make logs` provide status and diagnostics. Compose waits for PostgreSQL's actual healthcheck before migrating.
 - **Missing or invalid variables:** `make run` validates `.env` before starting Compose. Only local defaults are generated automatically; external-service credentials are not invented.
 - **Incompatible dependencies:** use Python 3.12+, Poetry 2.x, and Node 22+, then rerun `make setup` to synchronize with `poetry.lock` and `package-lock.json`.

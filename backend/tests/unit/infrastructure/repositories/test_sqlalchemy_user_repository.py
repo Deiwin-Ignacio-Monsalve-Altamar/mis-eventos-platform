@@ -103,6 +103,40 @@ def test_find_by_id_returns_none_when_user_does_not_exist():
     assert repository.find_by_id(99) is None
 
 
+def test_find_first_admin_only_queries_and_maps_the_existing_account():
+    """Read an administrator without changing database state."""
+    user = make_user()
+    user.role = UserRole.ADMIN.value
+    session = Mock()
+    session.scalar.return_value = user
+    repository = SQLAlchemyUserRepository(session)
+
+    account = repository.find_first_admin()
+
+    assert account == UserAccount(
+        id=17,
+        email=user.email,
+        password_hash=user.password_hash,
+        first_name=user.first_name,
+        last_name=user.last_name,
+        role=UserRole.ADMIN,
+    )
+    query = session.scalar.call_args.args[0]
+    assert "users.role" in str(query)
+    session.add.assert_not_called()
+    session.commit.assert_not_called()
+    session.rollback.assert_not_called()
+
+
+def test_find_first_admin_returns_none_when_no_admin_exists():
+    """Return no account when the administrator lookup finds no row."""
+    session = Mock()
+    session.scalar.return_value = None
+    repository = SQLAlchemyUserRepository(session)
+
+    assert repository.find_first_admin() is None
+
+
 def test_add_persists_user_and_returns_domain_account():
     """Persist all account fields and map the generated identifier back."""
     session = Mock()
