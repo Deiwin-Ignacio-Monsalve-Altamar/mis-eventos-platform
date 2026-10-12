@@ -117,22 +117,28 @@ export default function MyEventsPage() {
       {error && <><ErrorMessage error={error} /><button className="button button-secondary" onClick={() => { setActionError(null); setRetry((value) => value + 1) }} type="button">Intentar de nuevo</button></>}
       {!result && !error && <LoadingMessage>Cargando tus eventos…</LoadingMessage>}
       {result?.events.length === 0 && <div className="organizer-empty"><EmptyMessage>No encontramos eventos con estos criterios.</EmptyMessage><Link className="button button-primary" to="/events/new">Crear tu primer evento</Link></div>}
-      {result?.events.length > 0 && <div className="organizer-event-list">
-        {result.events.map((event) => (
-          <article className="organizer-event-card" key={event.id}>
-            <EventCover event={event} variant="organizer" />
-            <div className="organizer-event-copy">
-              <span className={`status-badge status-${event.status}`}>{getEventStatusLabel(event.status)}</span>
-              <h2><Link to={`/events/${event.id}`}>{event.title}</Link></h2>
-              <p><time dateTime={event.starts_at}>{formatEventDate(event.starts_at, 'medium')}</time>{event.location ? ` · ${event.location}` : ''}</p>
-              <div className="button-row">
+      {result?.events.length > 0 && <div className="organizer-events-table-wrap">
+        <table className="organizer-events-table">
+          <caption>Eventos propios que puedes consultar y administrar</caption>
+          <thead><tr><th scope="col">Evento</th><th scope="col">Estado</th><th scope="col">Fecha y lugar</th><th scope="col">Acciones</th></tr></thead>
+          <tbody>{result.events.map((event) => (
+            <tr className="organizer-event-row" key={event.id}>
+              <th data-label="Evento" scope="row">
+                <div className="organizer-event-primary">
+                  <EventCover event={event} variant="organizer" />
+                  <h2><Link to={`/events/${event.id}`}>{event.title}</Link></h2>
+                </div>
+              </th>
+              <td data-label="Estado"><span className={`status-badge status-${event.status}`}>{getEventStatusLabel(event.status)}</span></td>
+              <td data-label="Fecha y lugar"><time dateTime={event.starts_at}>{formatEventDate(event.starts_at, 'medium')}</time>{event.location && <span className="organizer-event-location">{event.location}</span>}</td>
+              <td data-label="Acciones"><div className="organizer-row-actions">
                 <Link className="button button-secondary" to={`/events/${event.id}?edit=1`}>Editar</Link>
                 {['draft', 'published'].includes(event.status) && <button className="button button-secondary" disabled={busyEventId === event.id} onClick={() => cancelEvent(event)} type="button">Cancelar evento</button>}
                 <button className="button button-danger" disabled={busyEventId === event.id} onClick={() => deleteEvent(event)} type="button">{busyEventId === event.id ? 'Procesando…' : 'Eliminar'}</button>
-              </div>
-            </div>
-          </article>
-        ))}
+              </div></td>
+            </tr>
+          ))}</tbody>
+        </table>
       </div>}
       <PaginationControls disabled={!result} onPageChange={(nextPage) => updateFilters({ page: String(nextPage) })} pagination={result?.pagination} />
     </section>

@@ -204,7 +204,7 @@ test('settings stay disabled, Escape closes the menu, and outside clicks dismiss
   await expect(page).toHaveURL(/\/events$/)
 })
 
-test('avatar logout clears the session, redirects to events, and fits a mobile viewport', async ({ page }) => {
+test('attendee logout clears the session, redirects to events, and fits a mobile viewport', async ({ page }) => {
   await mockApi(page, { authenticated: true })
   await page.setViewportSize({ width: 375, height: 812 })
   await page.goto('/events')
@@ -223,10 +223,25 @@ test('avatar logout clears the session, redirects to events, and fits a mobile v
   await logoutButton.click()
 
   await expect(page).toHaveURL(/\/events$/)
-  await expect(page.getByRole('banner').getByRole('link', { name: 'Iniciar sesión' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Abrir menú de usuario' })).toHaveCount(0)
+  await page.getByRole('button', { name: 'Abrir navegación' }).click()
+  await expect(page.getByRole('navigation', { name: 'Navegación principal' }).getByRole('link', { name: 'Iniciar sesión' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Cerrar sesión' })).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Abrir menú de usuario' })).toHaveCount(0)
 })
+
+for (const role of ['ORGANIZER', 'ADMIN']) {
+  test(`${role.toLowerCase()} logout clears the session and redirects to login`, async ({ page }) => {
+    await mockApi(page, { authenticated: true, role })
+    await page.goto('/events')
+    await page.getByRole('button', { name: 'Abrir menú de usuario' }).click()
+    await page.getByRole('navigation', { name: 'Menú de usuario' }).getByRole('button', { name: 'Cerrar sesión' }).click()
+
+    await expect(page).toHaveURL(/\/login$/)
+    await expect(page.getByRole('heading', { name: 'Bienvenido de nuevo' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Abrir menú de usuario' })).toHaveCount(0)
+  })
+}
 
 test('failed logout keeps the user authenticated and shows an error', async ({ page }) => {
   await mockApi(page, { authenticated: true, failLogout: true })
@@ -295,8 +310,9 @@ test('opens and edits an own draft through the private event endpoint without re
   await page.goto('/my-events')
   await page.getByRole('link', { name: 'Community Design Day' }).click()
 
+  await expect(page).toHaveURL(/\/events\/4$/)
   await expect(page.getByRole('heading', { name: event.title })).toBeVisible()
-  await expect(page.getByText('Borrador')).toBeVisible()
+  await expect(page.getByText('Borrador', { exact: true })).toBeVisible()
   await expect(page.getByRole('status').filter({ hasText: 'La agenda se podrá consultar y administrar cuando el evento esté publicado.' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Agregar sesión' })).toHaveCount(0)
   await expect(page.getByRole('img', { name: /Community Design Day/ }).first()).toHaveAttribute('src', 'https://images.example.test/cover.webp')
@@ -307,7 +323,7 @@ test('opens and edits an own draft through the private event endpoint without re
   await page.getByRole('button', { name: 'Guardar cambios' }).click()
 
   await expect(page.getByRole('heading', { name: 'Updated draft' })).toBeVisible()
-  await expect(page.locator('img.event-cover')).toHaveAttribute('src', 'https://images.example.test/cover.webp')
+  await expect(page.locator('img.event-cover').first()).toHaveAttribute('src', 'https://images.example.test/cover.webp')
   expect(publicDetailRequests).toHaveLength(0)
   expect(draftSessionRequests).toHaveLength(0)
 })

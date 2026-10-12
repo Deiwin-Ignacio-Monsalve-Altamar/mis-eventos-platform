@@ -257,17 +257,24 @@ export default function EventDetailsPage() {
   return (
     <div className="event-detail-page">
       <Link className="text-link event-back-link" to={`/events${location.search}`}>← Volver a eventos</Link>
-      <article className="event-detail-editorial">
+      {['ORGANIZER', 'ADMIN'].includes(auth.user?.role) && <nav aria-label="Secciones del evento" className="event-detail-section-nav">
+        <a href="#event-information">Información</a>
+        <a href="#event-capacity">Cupos</a>
+        <a href="#event-registration">Inscripción</a>
+        <a href="#event-gallery">Galería</a>
+        <a href="#event-sessions">Sesiones</a>
+      </nav>}
+      <article className="event-detail-editorial" id="event-information">
         <EventCover event={event} variant="detail" />
         <div className="event-detail-copy">
           <p className="eyebrow">{getEventStatusLabel(event.status)}</p>
           <h1>{event.title}</h1>
           <p className="event-description">{event.description || 'La organización aún no ha compartido una descripción.'}</p>
-          <dl className="event-facts">
+          <dl aria-label="Información y capacidad del evento" className="event-facts">
             <div><dt>Fecha</dt><dd><time dateTime={event.starts_at}>{formatEventDate(event.starts_at)}</time></dd></div>
             <div><dt>Finaliza</dt><dd><time dateTime={event.ends_at}>{formatEventDate(event.ends_at)}</time></dd></div>
             <div><dt>Lugar</dt><dd>{event.location || 'Lugar por confirmar'}</dd></div>
-            <div><dt>Disponibilidad</dt><dd aria-live="polite">
+            <div id="event-capacity"><dt>Disponibilidad</dt><dd aria-live="polite">
               {currentCapacityQuery?.status === 'success'
                 ? `${currentCapacityQuery.data.available} cupos disponibles de ${currentCapacityQuery.data.capacity}`
                 : currentCapacityQuery?.status === 'error'
@@ -331,7 +338,7 @@ export default function EventDetailsPage() {
             </p>
           )}
           {(canRegister || registration.registered || registration.status === 'cancelled') && (
-            <div className="event-registration">
+            <div aria-label="Inscripción al evento" className="event-registration" id="event-registration">
               <RegistrationNotice registration={registration} />
               <RegistrationActions
                 authStatus={auth.status}
@@ -362,9 +369,9 @@ export default function EventDetailsPage() {
           {!canRegister && !registration.registered && <p className="event-neutral-note">Este evento no está aceptando inscripciones.</p>}
         </div>
       </article>
-      <EventImageGallery event={event} />
+      <div id="event-gallery"><EventImageGallery event={event} /></div>
 
-      <section aria-labelledby="sessions-heading" className="event-sessions-section">
+      <section aria-labelledby="sessions-heading" className="event-sessions-section" id="event-sessions">
         <header>
           <div><p className="eyebrow">La agenda</p><h2 id="sessions-heading">Sesiones del evento</h2></div>
           {isOwner && event.status === 'published' && sessionEditor === undefined && (

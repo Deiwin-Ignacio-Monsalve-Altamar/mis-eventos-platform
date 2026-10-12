@@ -56,7 +56,7 @@ test('application provider renders every required route without a blank screen',
         StaticRouter,
         { location: '/events' },
         createElement(AppHeader, {
-          auth: { status: 'authenticated', user: { id: 1 } },
+          auth: { status: 'authenticated', user: { id: 1, role: 'ORGANIZER' } },
         }),
       ),
     )

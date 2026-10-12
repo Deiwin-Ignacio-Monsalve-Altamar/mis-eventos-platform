@@ -75,7 +75,7 @@ test('my events use the position-zero cover, branded fallbacks, and existing act
 
   await page.goto('/my-events')
 
-  const orderedCard = page.locator('.organizer-event-card').filter({ hasText: 'Galería ordenada' })
+  const orderedCard = page.locator('.organizer-event-row').filter({ hasText: 'Galería ordenada' })
   await expect(orderedCard.locator('img')).toHaveAttribute('src', 'https://images.example.test/main.webp')
   await expect(orderedCard.getByRole('heading', { name: 'Galería ordenada' })).toBeVisible()
   await expect(orderedCard.locator('.status-badge')).toHaveText('Publicado')
@@ -85,12 +85,12 @@ test('my events use the position-zero cover, branded fallbacks, and existing act
   await expect(orderedCard.locator('img')).not.toHaveAttribute('src', /secondary/)
 
   for (const title of ['Sin galería', 'URL vacía', 'URL inválida', 'Fallo al cargar']) {
-    const card = page.locator('.organizer-event-card').filter({ hasText: title })
+    const card = page.locator('.organizer-event-row').filter({ hasText: title })
     await expect(card.locator('.event-artwork')).toBeVisible()
     await expect(card.locator('img')).toHaveCount(0)
   }
 
-  const failedCard = page.locator('.organizer-event-card').filter({ hasText: 'Fallo al cargar' })
+  const failedCard = page.locator('.organizer-event-row').filter({ hasText: 'Fallo al cargar' })
   await expect(failedCard.locator('.event-artwork')).toHaveText(/Mis Eventos/)
   const eventApiPaths = apiPaths.filter((path) => path.startsWith('/events/'))
   expect(eventApiPaths.length).toBeGreaterThan(0)

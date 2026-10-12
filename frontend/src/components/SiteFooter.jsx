@@ -1,11 +1,12 @@
 /** Render the shared product footer outside standalone authentication pages. */
 
 import { Link } from 'react-router-dom'
+import { getNavigation } from '../navigation.js'
 
 /** Provide real navigation destinations and the current copyright year. */
 export default function SiteFooter({ auth }) {
-  const isAuthenticated = auth.status === 'authenticated' && Boolean(auth.user)
   const currentYear = new Date().getFullYear()
+  const { primaryLinks, accountLinks } = getNavigation(auth)
 
   return (
     <footer className="site-footer">
@@ -18,16 +19,11 @@ export default function SiteFooter({ auth }) {
           <p>Encuentra tu próximo plan. Haz que pase.</p>
         </div>
         <nav aria-label="Enlaces del pie de página" className="footer-navigation">
-          <Link to="/events">Explorar eventos</Link>
-          <Link to="/events/new">Crear evento</Link>
-          {isAuthenticated ? (
-            <Link to="/profile">Mi perfil</Link>
-          ) : (
-            <>
-              <Link to="/login">Iniciar sesión</Link>
-              <Link to="/register">Registrarse</Link>
-            </>
-          )}
+          {[...primaryLinks, ...accountLinks].map((item) => (
+            <Link key={item.to} to={item.to}>
+              {item.to === '/events' ? 'Explorar eventos' : item.to === '/profile' ? 'Mi perfil' : item.label}
+            </Link>
+          ))}
         </nav>
       </div>
       <div className="site-footer-legal">

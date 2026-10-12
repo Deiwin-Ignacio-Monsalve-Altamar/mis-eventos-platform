@@ -9,7 +9,7 @@ export default function ProfileBarChart({ title, label, items }) {
       {items.map((item) => {
         const percentage = item.value === 0 ? 0 : Math.max(2, (item.value / maximum) * 100)
         return (
-          <div className="profile-chart-row" key={item.label}>
+            <div className="profile-chart-row" key={item.key ?? item.label}>
             <span>{item.label}</span>
             <div aria-label={`${item.label}: ${item.value}`} aria-valuemax={maximum} aria-valuemin="0" aria-valuenow={item.value} className="profile-chart-track" role="progressbar">
               <span style={{ width: `${percentage}%` }} />
