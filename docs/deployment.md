@@ -1,9 +1,10 @@
 # Production deployment guide
 
-This guide describes a provider-neutral deployment for a static React frontend,
-a Flask service, and managed PostgreSQL. No provider is selected in this
-repository, so the hosting rules below define the required behavior without
-assuming a vendor-specific configuration file.
+This guide describes the production frontend and the provider-neutral
+configuration for a static React frontend, a Flask service, and managed
+PostgreSQL. The production frontend URL is
+<https://mis-eventos-frontend-h2j3.onrender.com/>. The repository does not
+specify the public backend URL or its hosting configuration.
 
 ## Prerequisites
 
@@ -40,17 +41,38 @@ frontend values as build-time variables in the static host.
 | `VITE_API_BASE_URL` | Frontend build | Optional | Public API base compiled into the bundle; use the backend's public URL plus `/api/v1` for separate services, or `/api/v1` when a same-origin proxy exists. |
 | `VITE_APP_ENVIRONMENT` | Frontend build | Optional | Public telemetry label; default `local`. |
 | `VITE_APP_VERSION` | Frontend build | Optional | Public telemetry label; default `dev`. |
-| `CLOUDINARY_URL` | Backend secret | Required when event images are uploaded | Cloudinary connection URL in the form `cloudinary://<api_key>:<api_secret>@<cloud_name>`. Store it only in the backend's private environment settings. |
+| `CLOUDINARY_URL` | Backend secret | Optional at startup; required for new event image uploads and cleanup of managed Cloudinary images | Cloudinary connection URL in the form `cloudinary://<api_key>:<api_secret>@<cloud_name>`. Store it only in the backend's private environment settings. |
 
 The root `.env.example` contains local development values. Do not copy its
 database credentials into a hosted service. The `VITE_*` values are public and
 must never contain credentials or signing keys.
 
-Set `CLOUDINARY_URL` from the Cloudinary API credentials in the backend host's
-private environment settings. It is optional at startup and validated only
-when an image upload or managed Cloudinary asset cleanup is requested. New
-uploads use the `mis-eventos/events` folder. Existing R2 URLs remain stored and
-are not migrated automatically.
+### Event image storage and delivery
+
+The current backend integration uploads new event images to Cloudinary, not
+Cloudflare R2. Set `CLOUDINARY_URL` from the Cloudinary API credentials in the
+backend host's private environment settings. The variable is optional at
+application startup. The storage adapter parses and validates it when an image
+upload is requested, or when deleting an event that has images managed by this
+Cloudinary integration. A missing or malformed value makes those operations
+fail with an image-storage error; it does not prevent the API from starting or
+serving other operations.
+
+Uploads are converted to WebP and stored under `mis-eventos/events`. Cloudinary
+returns both a `public_id` and an HTTPS `secure_url`; the backend persists the
+identifier and URL in the event gallery. The URL returned by Cloudinary is used
+by the frontend as the image source, so image delivery goes through the URL's
+Cloudinary delivery/CDN host. The application has no separate CDN URL or
+Cloudflare R2 endpoint setting in this integration.
+
+Some existing gallery records may contain URLs for images previously stored in
+Cloudflare R2. The backend preserves and returns those stored URLs, allowing
+the browser to request the image from the URL already recorded (including an
+R2 custom-domain/CDN URL if that is what the record contains). The current code
+does not upload to R2, configure R2 credentials or endpoints, select an R2 CDN,
+or migrate/delete legacy R2 objects. No R2 or project-specific CDN variables
+are defined by the checked-in implementation. Configure any externally
+managed legacy R2 delivery separately; it is not controlled by this backend.
 
 ## Build and configure the static frontend
 
@@ -66,9 +88,12 @@ Replace `api.example.com` with the backend's public host before building.
 Publish the generated `frontend/dist/` directory. Set `VITE_APP_VERSION` in the
 build environment if the deployment pipeline has a release identifier.
 
-For separate frontend and backend services, set `VITE_API_BASE_URL` to the
-backend's public HTTPS URL including `/api/v1`, and set `FRONTEND_ORIGIN` on the
-backend to the frontend's exact public origin. The backend allows credentialed
+For the production frontend at
+`https://mis-eventos-frontend-h2j3.onrender.com/`, set `VITE_API_BASE_URL` to
+the backend's public HTTPS URL including `/api/v1`, and set
+`FRONTEND_ORIGIN=https://mis-eventos-frontend-h2j3.onrender.com` on the backend.
+The repository does not provide the backend's public URL; obtain it from the
+backend host configuration. The backend allows credentialed
 CORS only from that origin and only on `/api/v1/*`. `API_PROXY_TARGET` remains a
 Vite development-server setting and does not route production traffic.
 

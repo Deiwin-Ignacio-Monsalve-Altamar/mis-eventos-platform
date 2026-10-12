@@ -9,6 +9,18 @@ Full-stack event management application built with Flask, React, PostgreSQL, and
 - [Frontend visual design and accessibility guidance](frontend/docs/frontend-design.md)
 - [Integration test scope and command](backend/tests/integration/README.md)
 
+## Production frontend
+
+The production frontend is published at
+<https://mis-eventos-frontend-h2j3.onrender.com/>. It is a static React build;
+the browser API client uses `VITE_API_BASE_URL` at build time to reach the
+backend. The repository does not define the production backend URL, so set
+`VITE_API_BASE_URL` to the backend's public HTTPS URL ending in `/api/v1` in
+the frontend host's build environment. Configure the backend's `FRONTEND_ORIGIN`
+to exactly `https://mis-eventos-frontend-h2j3.onrender.com` for credentialed
+cross-origin API requests. See the [production deployment guide](docs/deployment.md)
+for the implemented image-storage behavior and required backend settings.
+
 ## Database and migrations
 
 For local development, create `.env` from `.env.example` only when `.env` does not already exist. Run this from the repository root; it preserves any existing local configuration:
@@ -193,3 +205,12 @@ error messages. Duplicate API errors are suppressed in the global rejection
 handler. The frontend telemetry is local to the browser console; there is no
 browser-to-server ingestion endpoint, so frontend telemetry is not centrally
 collected.
+
+## Architecture
+
+The [architecture guide](docs/architecture.md) documents the end-to-end React,
+Flask, PostgreSQL, authentication, authorization, and image flows with Mermaid
+diagrams. It distinguishes checked-in integrations from production host
+settings that are not present in the repository, including the unavailable
+backend hostname and the difference between current Cloudinary uploads and
+legacy R2 image URLs.
