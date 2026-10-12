@@ -12,6 +12,7 @@ import {
   createEvent,
   deleteEvent,
   getEvent,
+  getMyEvent,
   listEventSessions,
   listEvents,
   updateEvent,
@@ -87,15 +88,17 @@ export function AppProvider({ children }) {
     }
   }, [])
 
-  const loadEvent = useCallback(async (eventId) => {
+  const loadEvent = useCallback(async (eventId, { ownerOnly = false } = {}) => {
     const requestId = ++eventRequestId.current
     dispatch({ type: 'selected-event/loading' })
     try {
-      const event = await getEvent(eventId)
+      const event = ownerOnly ? await getMyEvent(eventId) : await getEvent(eventId)
       if (requestId !== eventRequestId.current) return
       dispatch({ type: 'selected-event/success', event })
+      return event
     } catch (error) {
       if (requestId === eventRequestId.current) dispatch({ type: 'selected-event/error', error })
+      return null
     }
   }, [])
 

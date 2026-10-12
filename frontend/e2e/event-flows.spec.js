@@ -30,11 +30,15 @@ const startingSession = {
 async function mockApi(page, {
   authenticated = false,
   owner = false,
+  role = null,
+  draft = false,
+  privateEventError = null,
+  privateEventDelayMs = 0,
   failRegistration = false,
   failLogout = false,
 } = {}) {
   let sessions = [{ ...startingSession }]
-  let currentEvent = { ...event }
+  let currentEvent = { ...event, status: draft ? 'draft' : event.status, images: [{ url: 'https://images.example.test/cover.webp', position: 0 }] }
 
   await page.route('**/api/v1/**', async (route) => {
     const request = route.request()
@@ -47,10 +51,10 @@ async function mockApi(page, {
     if (path === '/auth/me' && method === 'GET') {
       status = authenticated ? 200 : 401
       body = authenticated
-        ? { user: { id: 12, email: 'owner@example.test', first_name: 'Alex', last_name: 'Rivera' } }
+        ? { user: { id: 12, email: 'owner@example.test', first_name: 'Alex', last_name: 'Rivera', role: role || (owner ? 'ORGANIZER' : 'ATTENDEE') } }
         : { error: { code: 'unauthorized', message: 'Authentication required.' } }
     } else if (path === '/auth/login' && method === 'POST') {
-      body = { user: { id: 12, email: 'owner@example.test', first_name: 'Alex', last_name: 'Rivera' } }
+      body = { user: { id: 12, email: 'owner@example.test', first_name: 'Alex', last_name: 'Rivera', role: role || (owner ? 'ORGANIZER' : 'ATTENDEE') } }
     } else if (path === '/auth/logout' && method === 'POST') {
       status = failLogout ? 500 : 200
       body = failLogout
@@ -60,17 +64,28 @@ async function mockApi(page, {
       currentEvent = { ...request.postDataJSON(), id: 11, version: 1 }
       status = 201
       body = { event: currentEvent }
+    } else if (path === '/events/mine' && method === 'GET') {
+      body = { events: [currentEvent], pagination: { page: 1, page_size: 9, total: 1, total_pages: 1 } }
     } else if ((path === '/events/4' || path === '/events/11') && method === 'GET') {
-      body = { event: currentEvent }
+      status = currentEvent.status === 'published' ? 200 : 404
+      body = status === 200 ? { event: currentEvent } : { error: { code: 'not_found', message: 'Not found.' } }
     } else if ((path === '/events/4/capacity' || path === '/events/11/capacity') && method === 'GET') {
       body = { capacity: 20, occupied: 1, available: 19 }
     } else if ((path === '/events/4/sessions' || path === '/events/11/sessions') && method === 'GET') {
       body = { sessions }
-    } else if (path === '/events/mine/4' && method === 'GET') {
-      status = owner ? 200 : 403
+    } else if (/^\/events\/mine\/\d+$/.test(path) && method === 'GET') {
+      if (privateEventError === 'network') {
+        await route.abort()
+        return
+      }
+      const eventId = Number(path.split('/').at(-1))
+      const canAccessPrivateEvent = owner || (currentEvent.id !== 4 && currentEvent.id === eventId)
+      status = privateEventError || (canAccessPrivateEvent ? 200 : 404)
       body = owner
         ? { event: currentEvent }
-        : { error: { code: 'forbidden', message: 'Caller is not the event creator.' } }
+        : canAccessPrivateEvent
+          ? { event: currentEvent }
+          : { error: { code: privateEventError ? 'server_error' : 'not_found', message: 'Private event lookup failed.' } }
     } else if (path === '/registrations/me' && method === 'GET') {
       body = { registrations: [], pagination: { page: 1, total_pages: 1, total: 0 } }
     } else if (path === '/events/4/registrations/me' && method === 'POST') {
@@ -103,6 +118,9 @@ async function mockApi(page, {
       body = { error: { code: 'not_found', message: `Unexpected test request: ${method} ${path}` } }
     }
 
+    if (/^\/events\/mine\/\d+$/.test(path) && privateEventDelayMs) {
+      await new Promise((resolve) => setTimeout(resolve, privateEventDelayMs))
+    }
     await route.fulfill({ status, contentType: 'application/json', body: status === 204 ? '' : JSON.stringify(body) })
   })
 }
@@ -144,7 +162,7 @@ test('sign-in from event creation returns to the authenticated creation form', a
 })
 
 test('authenticated users can create an event', async ({ page }) => {
-  await mockApi(page, { authenticated: true })
+  await mockApi(page, { authenticated: true, role: 'ORGANIZER' })
   await page.goto('/events/new')
   await page.getByLabel('Nombre del evento').fill('My new event')
   await page.getByLabel('Fecha y hora de inicio').fill('2030-06-10T14:00')
@@ -239,7 +257,7 @@ test('switches to cancellation after a successful registration', async ({ page }
 })
 
 test('does not show owner controls when the owner check is denied', async ({ page }) => {
-  await mockApi(page, { authenticated: true })
+  await mockApi(page, { authenticated: true, role: 'ORGANIZER' })
   await page.goto('/events/4')
 
   await expect(page.getByRole('button', { name: 'Editar evento' })).toHaveCount(0)
@@ -258,6 +276,73 @@ test('opens the event editor from the query and saves changes', async ({ page })
 
   await expect(page.getByRole('heading', { name: 'Updated Design Day' })).toBeVisible()
   await expect(page).not.toHaveURL(/\?edit=1$/)
+})
+
+test('opens and edits an own draft through the private event endpoint without replacing its images', async ({ page }) => {
+  await mockApi(page, { authenticated: true, owner: true, role: 'ORGANIZER', draft: true })
+  await page.route('https://images.example.test/**', (route) => route.fulfill({
+    status: 200,
+    contentType: 'image/gif',
+    body: Buffer.from('R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=', 'base64'),
+  }))
+  const publicDetailRequests = []
+  const draftSessionRequests = []
+  page.on('request', (request) => {
+    const url = new URL(request.url())
+    if (request.method() === 'GET' && url.pathname.endsWith('/events/4')) publicDetailRequests.push(request.url())
+    if (url.pathname.endsWith('/events/4/sessions')) draftSessionRequests.push(request.url())
+  })
+  await page.goto('/my-events')
+  await page.getByRole('link', { name: 'Community Design Day' }).click()
+
+  await expect(page.getByRole('heading', { name: event.title })).toBeVisible()
+  await expect(page.getByText('Borrador')).toBeVisible()
+  await expect(page.getByRole('status').filter({ hasText: 'La agenda se podrá consultar y administrar cuando el evento esté publicado.' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Agregar sesión' })).toHaveCount(0)
+  await expect(page.getByRole('img', { name: /Community Design Day/ }).first()).toHaveAttribute('src', 'https://images.example.test/cover.webp')
+  await page.getByRole('button', { name: 'Editar evento' }).click()
+  await expect(page.getByLabel('Nombre del evento')).toHaveValue(event.title)
+  await expect(page.locator('[aria-label^="Galería actual"]')).toBeVisible()
+  await page.getByLabel('Nombre del evento').fill('Updated draft')
+  await page.getByRole('button', { name: 'Guardar cambios' }).click()
+
+  await expect(page.getByRole('heading', { name: 'Updated draft' })).toBeVisible()
+  await expect(page.locator('img.event-cover')).toHaveAttribute('src', 'https://images.example.test/cover.webp')
+  expect(publicDetailRequests).toHaveLength(0)
+  expect(draftSessionRequests).toHaveLength(0)
+})
+
+test('does not fall back to public detail when the private owner lookup fails', async ({ page }) => {
+  await mockApi(page, { authenticated: true, owner: false, role: 'ORGANIZER', draft: true })
+  await page.goto('/events/4')
+
+  await expect(page.getByText('No encontramos este evento. Puede que ya no esté disponible.')).toBeVisible()
+  await expect(page.getByRole('heading', { name: event.title })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Editar evento' })).toHaveCount(0)
+})
+
+test('keeps server lookup errors distinct from a missing draft', async ({ page }) => {
+  await mockApi(page, { authenticated: true, owner: false, role: 'ORGANIZER', draft: true, privateEventError: 503 })
+  await page.goto('/events/4')
+
+  await expect(page.getByRole('alert').filter({ hasText: 'Ocurrió un problema al cargar la información.' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: event.title })).toHaveCount(0)
+})
+
+test('shows a loading state while the private draft lookup is pending', async ({ page }) => {
+  await mockApi(page, { authenticated: true, owner: true, role: 'ORGANIZER', draft: true, privateEventDelayMs: 700 })
+  await page.goto('/events/4')
+
+  await expect(page.getByText('Estamos cargando el evento…')).toBeVisible()
+  await expect(page.getByRole('heading', { name: event.title })).toBeVisible()
+})
+
+test('keeps a private lookup network error separate from event not found', async ({ page }) => {
+  await mockApi(page, { authenticated: true, role: 'ORGANIZER', draft: true, privateEventError: 'network' })
+  await page.goto('/events/4')
+
+  await expect(page.getByText('No pudimos conectar con el servidor. Revisa tu conexión e inténtalo de nuevo.')).toBeVisible()
+  await expect(page.getByText('No encontramos este evento. Puede que ya no esté disponible.')).toHaveCount(0)
 })
 
 test('allows the owner to add, edit, and delete a session', async ({ page }) => {
