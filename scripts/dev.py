@@ -367,7 +367,7 @@ def probe_url(url: str, expected_status: int | None = None) -> tuple[bool, str]:
     try:
         with urllib.request.urlopen(url, timeout=3) as response:
             status = response.status
-    except (urllib.error.URLError, TimeoutError) as error:
+    except (urllib.error.URLError, TimeoutError, ConnectionError) as error:
         return False, str(
             error.reason if isinstance(error, urllib.error.URLError) else error
         )
