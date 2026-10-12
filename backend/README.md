@@ -66,21 +66,16 @@ Do not share or commit `.env`. PostgreSQL credentials in Compose are for local d
 | `JWT_COOKIE_SECURE` | Cookie Secure attribute. Defaults to `false` locally; production requires `true`. |
 | `APP_ENVIRONMENT` | Environment label; defaults to `local` and is normalized to lowercase. |
 | `APP_VERSION`, `SERVICE_NAME`, `LOG_LEVEL` | Service and log labels. Defaults are `dev`, `mis-eventos-backend`, and `INFO`. |
-| `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME` | Optional until event images are uploaded. Required when creating the R2 client; keep access key values in a secret manager. |
-| `R2_PUBLIC_BASE_URL` | Public CDN base URL used to persist each uploaded image's public URL; required when uploading images, not at application startup. |
-
-Cloudflare R2 credentials are created in the Cloudflare dashboard under
-**Storage & databases → R2 → Manage in API Tokens**. Use an Object Read & Write
-token scoped to the required bucket, and store its Access Key ID and Secret
-Access Key in the backend environment or secret manager. Set the account ID
-and bucket name separately. The application builds the S3 endpoint from the
-account ID and does not contact R2 at startup. The R2 client is initialized
-only when explicitly requested; no bucket or object is created automatically.
+| `CLOUDINARY_URL` | Optional until event images are uploaded. Use `cloudinary://<api_key>:<api_secret>@<cloud_name>` and keep it in the backend environment or secret manager. |
 
 Event creation and editing accept `multipart/form-data` with an `event` field
 containing the JSON event payload and one or more repeated `images` file fields.
 JPEG, PNG, and WebP inputs up to 5 MB each are converted in memory to WebP.
-The API stores each public URL and its private R2 object key in the event gallery.
+The API uploads each image to Cloudinary under `mis-eventos/events`, then stores
+the returned HTTPS `secure_url` and Cloudinary `public_id` in the event gallery.
+Cloudinary is configured lazily, so no account access is needed when the API
+starts without image uploads. Existing gallery URLs remain unchanged; existing
+R2 objects are not migrated or deleted automatically.
 
 To start local PostgreSQL with Compose, run this command from the repository root:
 

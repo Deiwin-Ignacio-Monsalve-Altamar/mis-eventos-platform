@@ -70,6 +70,7 @@ def test_list_events_without_search_filters_published_and_maps_results():
         status="published",
         created_by_id=8,
         version=1,
+        images=[],
     )
     session = Mock(spec=Session)
     session.scalar.return_value = 1
@@ -200,6 +201,7 @@ def test_same_initial_event_version_allows_only_first_update():
         status="draft",
         created_by_id=8,
         version=1,
+        images=[],
     )
     session = Mock(spec=Session)
     session.scalar.side_effect = [model, 0, None, model]

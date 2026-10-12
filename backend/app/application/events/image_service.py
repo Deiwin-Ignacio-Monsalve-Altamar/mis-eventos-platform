@@ -5,8 +5,9 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from io import BytesIO
 from logging import getLogger
+from traceback import format_tb
 from typing import BinaryIO
-from urllib.parse import quote, urlsplit
+from urllib.parse import urlsplit
 from uuid import uuid4
 
 from PIL import Image, ImageOps, UnidentifiedImageError
@@ -16,10 +17,9 @@ from app.domain.entities.event_image import EventImageRecord
 from app.domain.repositories.event_image_repository import EventImageRepository
 from app.settings import (
     ALLOWED_EVENT_IMAGE_FORMATS,
+    EVENT_IMAGE_FOLDER,
     MAX_EVENT_IMAGE_COUNT,
     MAX_EVENT_IMAGE_SIZE_BYTES,
-    R2_BUCKET_NAME_ENV,
-    R2_PUBLIC_BASE_URL_ENV,
 )
 
 logger = getLogger(__name__)
@@ -30,75 +30,65 @@ class StagedEventImages:
     """Hold uploaded references until the event database operation commits."""
 
     records: tuple[EventImageRecord, ...]
-    client: object = field(repr=False)
-    bucket: str = field(repr=False)
+    storage: object = field(repr=False)
 
 
 class EventImageService:
-    """Convert images in memory and coordinate R2 with gallery persistence."""
+    """Convert images in memory and coordinate Cloudinary with persistence."""
 
     def __init__(
         self,
         repository: EventImageRepository,
-        config: dict[str, object],
         client_factory: Callable[[], object],
     ) -> None:
         self._repository = repository
-        self._config = config
         self._client_factory = client_factory
 
     def stage(self, files: list[BinaryIO]) -> StagedEventImages:
         """Validate, convert, and upload all files before changing database rows."""
         prepared = self._prepare(files)
-        public_base_url = self._config.get(R2_PUBLIC_BASE_URL_ENV)
-        bucket = self._config.get(R2_BUCKET_NAME_ENV)
-        if not isinstance(public_base_url, str) or not public_base_url.strip():
-            raise EventImageStorageError("Public image storage is not configured.")
         try:
-            parsed_url = urlsplit(public_base_url.strip())
-        except ValueError as error:
-            raise EventImageStorageError(
-                "Public image storage URL is invalid."
-            ) from error
-        if (
-            parsed_url.scheme not in {"http", "https"}
-            or not parsed_url.netloc
-            or parsed_url.query
-            or parsed_url.fragment
-        ):
-            raise EventImageStorageError("Public image storage URL is invalid.")
-        if not isinstance(bucket, str) or not bucket.strip():
-            raise EventImageStorageError("Image storage is not configured.")
-
-        try:
-            client = self._client_factory()
+            storage = self._client_factory()
         except Exception as error:
             raise EventImageStorageError("Image storage is unavailable.") from error
 
         records: list[EventImageRecord] = []
+        cleanup_public_ids: list[str] = []
         try:
             for position, content in enumerate(prepared):
-                key = f"events/{uuid4().hex}.webp"
+                requested_public_id = f"{EVENT_IMAGE_FOLDER}/{uuid4().hex}"
+                response = storage.upload(content, requested_public_id)
+                public_id = response.get("public_id")
+                secure_url = response.get("secure_url")
+                if public_id != requested_public_id:
+                    raise ValueError("Cloudinary did not return an image identifier.")
+                # Only compensate assets confirmed by a successful provider response.
+                cleanup_public_ids.append(public_id)
+                if not isinstance(secure_url, str):
+                    raise TypeError("Cloudinary did not return a secure image URL.")
+                parsed_url = urlsplit(secure_url)
+                if parsed_url.scheme != "https" or not parsed_url.netloc:
+                    raise ValueError("Cloudinary returned an invalid secure image URL.")
                 records.append(
                     EventImageRecord(
                         event_id=0,
-                        storage_key=key,
-                        url=f"{public_base_url.rstrip('/')}/{quote(key, safe='/')}",
+                        storage_key=public_id,
+                        url=secure_url,
                         position=position,
                     )
                 )
-                client.put_object(
-                    Bucket=bucket,
-                    Key=key,
-                    Body=content,
-                    ContentType="image/webp",
-                )
         except Exception as error:
-            self._delete_objects(
-                client, bucket, [image.storage_key for image in records]
+            logger.error(
+                "Cloudinary event image upload failed; error_type=%s.",
+                type(error).__name__,
             )
+            logger.debug(
+                "Cloudinary upload traceback:\n%s",
+                "".join(format_tb(error.__traceback__)),
+            )
+            self._delete_objects(storage, cleanup_public_ids)
             raise EventImageStorageError("Image upload failed.") from error
-        return StagedEventImages(tuple(records), client, bucket)
+        return StagedEventImages(tuple(records), storage)
 
     def replace(
         self, event_id: int, staged: StagedEventImages
@@ -119,17 +109,13 @@ class EventImageService:
             raise EventImageStorageError(
                 "Image metadata could not be saved."
             ) from error
-        self._delete_objects(
-            staged.client, staged.bucket, [image.storage_key for image in previous]
-        )
+        self._delete_objects(staged.storage, [image.storage_key for image in previous])
         return list(images)
 
     def cleanup(self, staged: StagedEventImages) -> None:
         """Remove newly uploaded objects when their database operation fails."""
         self._delete_objects(
-            staged.client,
-            staged.bucket,
-            [image.storage_key for image in staged.records],
+            staged.storage, [image.storage_key for image in staged.records]
         )
 
     def stored_for_event(self, event_id: int) -> list[EventImageRecord]:
@@ -140,11 +126,11 @@ class EventImageService:
         """Validate storage configuration before deleting the event row."""
         if not images:
             return None
-        bucket = self._config.get(R2_BUCKET_NAME_ENV)
-        if not isinstance(bucket, str) or not bucket.strip():
-            raise EventImageStorageError("Image storage is not configured.")
+        public_ids = self._cloudinary_public_ids(images)
+        if not public_ids:
+            return None
         try:
-            return self._client_factory(), bucket
+            return self._client_factory()
         except Exception as error:
             raise EventImageStorageError("Image storage is unavailable.") from error
 
@@ -152,8 +138,7 @@ class EventImageService:
         """Delete object files after their database references have been removed."""
         if not images or deletion is None:
             return
-        client, bucket = deletion
-        self._delete_objects(client, bucket, [image.storage_key for image in images])
+        self._delete_objects(deletion, [image.storage_key for image in images])
 
     @staticmethod
     def _prepare(files: list[BinaryIO]) -> list[bytes]:
@@ -201,15 +186,30 @@ class EventImageService:
         return prepared
 
     @staticmethod
-    def _delete_objects(client: object, bucket: str, keys: list[str]) -> None:
-        if not keys:
-            return
-        try:
-            result = client.delete_objects(
-                Bucket=bucket,
-                Delete={"Objects": [{"Key": key} for key in keys], "Quiet": True},
-            )
-            if result.get("Errors"):
-                logger.warning("Some event image objects could not be removed.")
-        except Exception:  # noqa: BLE001 - cleanup must not mask the original failure
-            logger.warning("Could not remove stored event images.")
+    def _cloudinary_public_ids(images: list[EventImageRecord]) -> list[str]:
+        return [
+            image.storage_key
+            for image in images
+            if image.storage_key.startswith(f"{EVENT_IMAGE_FOLDER}/")
+        ]
+
+    @staticmethod
+    def _delete_objects(storage: object, public_ids: list[str]) -> None:
+        for public_id in public_ids:
+            if not public_id.startswith(f"{EVENT_IMAGE_FOLDER}/"):
+                continue
+            try:
+                result = storage.delete(public_id)
+                if result.get("result") not in {"ok", "not found"}:
+                    logger.warning("A Cloudinary event image could not be removed.")
+            except Exception as error:  # noqa: BLE001 - cleanup must not mask the original failure
+                # Provider exception text can contain request details. Keep the stack
+                # frames and exception type for local diagnosis without logging values.
+                logger.warning(
+                    "Could not remove stored event images; error_type=%s.",
+                    type(error).__name__,
+                )
+                logger.debug(
+                    "Cloudinary cleanup traceback:\n%s",
+                    "".join(format_tb(error.__traceback__)),
+                )
