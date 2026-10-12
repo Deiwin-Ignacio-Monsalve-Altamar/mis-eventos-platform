@@ -30,10 +30,14 @@ WAIT_TIMEOUT_SECONDS = 90
 
 def command_output(command: list[str], cwd: Path = ROOT) -> tuple[int, str]:
     """Run a command quietly and return its exit code and combined output."""
+    environment = os.environ.copy()
+    if command[:2] == list(COMPOSE):
+        environment.pop("JWT_SECRET_KEY", None)
     try:
         result = subprocess.run(
             command,
             cwd=cwd,
+            env=environment,
             check=False,
             capture_output=True,
             text=True,
@@ -48,8 +52,13 @@ def command_output(command: list[str], cwd: Path = ROOT) -> tuple[int, str]:
 def run_command(command: list[str], cwd: Path = ROOT) -> int:
     """Run a command with live output and return its exit code."""
     print(f"\n$ {' '.join(command)}", flush=True)
+    environment = os.environ.copy()
+    if command[:2] == list(COMPOSE):
+        environment.pop("JWT_SECRET_KEY", None)
     try:
-        return subprocess.run(command, cwd=cwd, check=False).returncode
+        return subprocess.run(
+            command, cwd=cwd, env=environment, check=False
+        ).returncode
     except OSError as error:
         print(f"ERROR: unable to start command: {error}", file=sys.stderr)
         return 127
@@ -82,7 +91,7 @@ def stream_command(command: list[str], cwd: Path) -> tuple[int, str]:
 
 def compose_command(*arguments: str) -> list[str]:
     """Build a Docker Compose command using the repository configuration."""
-    return [*COMPOSE, *arguments]
+    return [*COMPOSE, "--env-file", str(ROOT / ".env"), *arguments]
 
 
 def check_tool(name: str, version_arguments: tuple[str, ...] = ("--version",)) -> bool:
