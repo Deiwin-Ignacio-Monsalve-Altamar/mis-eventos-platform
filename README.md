@@ -121,25 +121,69 @@ docker compose down -v
 
 Do not use that command to troubleshoot routine startup failures.
 
-## Tests and quality
+## Running Tests and Measuring Code Coverage
 
-From the repository root, `make setup` installs the local dependencies needed for tests. Unit tests do not require Docker, PostgreSQL, or external credentials:
+Run `make setup` from the repository root first to install the locked backend and frontend development dependencies. The regular unit suites use mocks where appropriate and do not require Docker, PostgreSQL, or external credentials.
+
+### Run tests without coverage
+
+From the repository root, run backend unit tests with:
+
+```sh
+cd backend && poetry run pytest
+```
+
+Run frontend tests from `frontend/` with:
+
+```sh
+npm test
+```
+
+The backend's default pytest configuration selects `tests/unit`. The integration suite is separate and can be run from the repository root with `cd backend && poetry run pytest tests/integration -m integration`; it uses mocked infrastructure and does not require Docker or an external database.
+
+Run the complete backend and frontend test suites from the repository root with:
+
+```sh
+make test
+```
+
+### Run tests with coverage
+
+The repository's Make targets run the tests and measure coverage together. From the repository root:
 
 ```sh
 make test-backend
 make test-frontend
-make test
+```
+
+`make test-backend` reports line and branch coverage in the terminal, including missing lines. It also writes XML and JUnit results under `reports/coverage/backend/` and a per-run HTML report at `reports/coverage/backend/htmlcov-<run-id>/index.html`.
+
+`make test-frontend` runs Node's built-in test runner with line, branch, and function coverage, and prints the coverage table in the terminal. The frontend runner does not generate a standalone HTML coverage report.
+
+Run both test suites with detailed coverage artifacts and a combined HTML dashboard by running either command from the repository root:
+
+```sh
+make coverage
+```
+
+`make test` also creates the combined report. Open `reports/coverage/index.html` in a browser for the dashboard, which summarizes both suites and shows the files with the lowest coverage. The backend's detailed per-file report is in the run-specific `reports/coverage/backend/htmlcov-<run-id>/index.html` directory. The frontend detailed coverage table is printed in the terminal and summarized in the combined dashboard.
+
+No line, branch, or function coverage thresholds are configured. Coverage percentages are informational; the Make targets fail when the test commands fail, not when coverage falls below a threshold.
+
+For Playwright E2E tests, install Chromium once with `cd frontend && npx playwright install chromium`, then run `npm run test:e2e` from `frontend/` or `make test-e2e` from the repository root. These browser tests are separate from the regular unit suites.
+
+Run lint checks from the repository root with:
+
+```sh
 make lint
 ```
 
-You can also build the frontend from `frontend/`:
+Build the frontend from `frontend/` with:
 
 ```sh
 cd frontend
 npm run build
 ```
-
-For Playwright E2E tests, install Chromium once with `cd frontend && npx playwright install chromium`, then run `npm run test:e2e` from `frontend/` or `make test-e2e` from the repository root. The backend integration tests are separate from the unit suite and run from the repository root with `cd backend && poetry run pytest tests/integration -m integration`; their infrastructure dependencies are mocked, so they do not require an external database.
 
 ## Common problems
 
