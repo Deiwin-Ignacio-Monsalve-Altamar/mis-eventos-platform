@@ -205,7 +205,9 @@ test('avatar logout clears the session, redirects to events, and fits a mobile v
   await logoutButton.click()
 
   await expect(page).toHaveURL(/\/events$/)
-  await expect(page.getByRole('banner').getByRole('link', { name: 'Iniciar sesión' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Abrir menú de usuario' })).toHaveCount(0)
+  await page.getByRole('button', { name: 'Abrir navegación' }).click()
+  await expect(page.getByRole('navigation', { name: 'Navegación principal' }).getByRole('link', { name: 'Iniciar sesión' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Cerrar sesión' })).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Abrir menú de usuario' })).toHaveCount(0)
 })

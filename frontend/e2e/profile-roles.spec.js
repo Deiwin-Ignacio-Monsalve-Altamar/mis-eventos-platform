@@ -4,12 +4,21 @@ import { expect, test } from '@playwright/test'
 
 const future = '2030-06-10T14:00:00Z'
 
-async function installProfileApi(page, role, sessionResponse = {}) {
+async function installProfileApi(page, role, sessionResponse = {}, { loginRequired = false } = {}) {
   const user = { id: 7, email: 'alex@example.test', first_name: 'Alex', last_name: 'Rivera', role }
+  let authenticated = !loginRequired
   await page.route('**/api/v1/**', async (route) => {
     const { pathname } = new URL(route.request().url())
     const path = pathname.replace('/api/v1', '')
-    if (path === '/auth/me') return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ user }) })
+    if (path === '/auth/me') {
+      return authenticated
+        ? route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ user }) })
+        : route.fulfill({ status: 401, contentType: 'application/json', body: JSON.stringify({ error: { code: 'authentication_required' } }) })
+    }
+    if (path === '/auth/login' && route.request().method() === 'POST') {
+      authenticated = true
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ user }) })
+    }
     if (path === '/admin/dashboard') return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ dashboard: {
       summary: {
         users: { total: 12, role_counts: { ATTENDEE: 8, ORGANIZER: 3, ADMIN: 1 } },
@@ -45,16 +54,33 @@ async function installProfileApi(page, role, sessionResponse = {}) {
   })
 }
 
+for (const { role, profileHeading } of [
+  { role: 'ATTENDEE', profileHeading: 'Mis inscripciones' },
+  { role: 'ORGANIZER', profileHeading: 'Resumen de gestión' },
+  { role: 'ADMIN', profileHeading: 'Actividad de la plataforma' },
+]) {
+  test(`${role.toLowerCase()} login from /login opens the role's profile`, async ({ page }) => {
+    await installProfileApi(page, role, {}, { loginRequired: true })
+    await page.goto('/login')
+    await page.getByLabel('Correo electrónico').fill('alex@example.test')
+    await page.getByLabel('Contraseña').fill('example-password')
+    await page.getByRole('button', { name: 'Iniciar sesión' }).click()
+
+    await expect(page).toHaveURL('/profile')
+    await expect(page.getByRole('heading', { name: profileHeading })).toBeVisible()
+  })
+}
+
 test('administrator profile shows role totals, trends, and organizer activity', async ({ page }) => {
   await installProfileApi(page, 'ADMIN')
   await page.goto('/profile')
   await expect(page.getByRole('heading', { name: 'Actividad de la plataforma' })).toBeVisible()
-  await expect(page.getByText('Usuarios', { exact: true })).toBeVisible()
+  await expect(page.getByRole('navigation', { name: 'Navegación principal' }).getByRole('link', { name: 'Usuarios' })).toBeVisible()
   await expect(page.getByText('Morgan Organizer')).toBeVisible()
   await page.getByRole('button', { name: 'Abrir menú de usuario' }).click()
   const menu = page.getByRole('navigation', { name: 'Menú de usuario' })
   await expect(menu.getByText('Administrador')).toBeVisible()
-  await expect(menu.getByRole('link', { name: 'Administrar usuarios' })).toBeVisible()
+  await expect(menu.getByRole('link', { name: 'Usuarios' })).toHaveCount(0)
 })
 
 test('organizer profile presents owned event capacity, sessions, and activity', async ({ page }) => {

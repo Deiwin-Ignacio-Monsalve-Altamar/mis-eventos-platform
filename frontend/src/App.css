@@ -1278,6 +1278,9 @@ h2 {
   letter-spacing: -.04em;
 }
 .main-navigation { justify-content: center; }
+.main-navigation-item { display: inline-flex; align-items: center; gap: 8px; }
+.main-navigation-divider { width: 1px; height: 20px; background: #ded8ed; }
+.mobile-nav-toggle { display: none; }
 .header-actions { display: flex; align-items: center; justify-content: flex-end; gap: 14px; }
 .header-login-link { color: var(--ink); font-size: .9rem; font-weight: 700; text-decoration: none; }
 .header-login-link:hover { color: var(--brand-dark); }
@@ -1845,14 +1848,50 @@ h1, h2 { color: var(--ink); }
 
 @media (max-width: 760px) {
   .site-header {
-    grid-template-areas: "brand actions" "nav nav";
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: "brand toggle actions" "nav nav nav";
+    grid-template-columns: minmax(0, 1fr) auto auto;
     gap: 12px 18px;
     padding: 16px 20px;
   }
   .site-header > .brand { grid-area: brand; }
   .site-header > .main-navigation { grid-area: nav; justify-content: flex-start; }
+  .site-header > .main-navigation:not(.is-open) { display: none; }
+  .site-header > .main-navigation.is-open { display: flex; }
+  .site-header > .mobile-nav-toggle { grid-area: toggle; }
   .site-header > .header-actions { grid-area: actions; }
+  .mobile-nav-toggle {
+    display: grid;
+    width: 42px;
+    height: 42px;
+    place-items: center;
+    border: 1px solid #e4dcf7;
+    border-radius: 12px;
+    background: #fff;
+    color: var(--ink);
+    cursor: pointer;
+  }
+  .mobile-nav-toggle:focus-visible { outline: 3px solid var(--brand); outline-offset: 3px; }
+  .mobile-nav-icon,
+  .mobile-nav-icon::before,
+  .mobile-nav-icon::after {
+    display: block;
+    width: 17px;
+    height: 2px;
+    border-radius: 2px;
+    background: currentColor;
+    transition: transform var(--motion-fast);
+  }
+  .mobile-nav-icon { position: relative; }
+  .mobile-nav-icon::before,
+  .mobile-nav-icon::after { position: absolute; left: 0; content: ''; }
+  .mobile-nav-icon::before { transform: translateY(-5px); }
+  .mobile-nav-icon::after { transform: translateY(5px); }
+  .mobile-nav-icon.is-open { background: transparent; }
+  .mobile-nav-icon.is-open::before { transform: rotate(45deg); }
+  .mobile-nav-icon.is-open::after { transform: rotate(-45deg); }
+  .main-navigation { flex-wrap: wrap; align-items: center; padding-top: 4px; }
+  .main-navigation-item { min-height: 38px; }
+  .main-navigation-divider { height: 18px; margin: 0 2px; }
   .events-hero { border-radius: 22px; }
   .events-hero-image { min-height: 215px; }
   .profile-hero { grid-template-columns: auto minmax(0, 1fr); }

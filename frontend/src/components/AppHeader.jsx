@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, NavLink, useLocation } from 'react-router-dom'
 import LogoutButton from './LogoutButton.jsx'
+import { getNavigation } from '../navigation.js'
 
 const ROLE_LABELS = {
   ADMIN: 'Administrador',
@@ -13,10 +14,15 @@ const ROLE_LABELS = {
 /** Show clear destinations while preserving the current authentication state. */
 export default function AppHeader({ auth }) {
   const isAuthenticated = auth.status === 'authenticated' && Boolean(auth.user)
-  const { pathname } = useLocation()
+  const location = useLocation()
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false)
+  const [navigationLocationKey, setNavigationLocationKey] = useState(null)
+  const isNavigationOpen = navigationLocationKey === location.key
   const userMenuRef = useRef(null)
   const avatarButtonRef = useRef(null)
+  const navigationButtonRef = useRef(null)
+  const { primaryLinks, accountLinks } = getNavigation(auth)
+  const navigationLinks = isAuthenticated ? primaryLinks : [...primaryLinks, ...accountLinks]
 
   useEffect(() => {
     if (!isUserMenuOpen) return undefined
@@ -43,20 +49,63 @@ export default function AppHeader({ auth }) {
     if (isUserMenuOpen) userMenuRef.current?.querySelector('a')?.focus()
   }, [isUserMenuOpen])
 
+  useEffect(() => {
+    if (!isNavigationOpen) return undefined
+
+    function closeNavigationOnEscape(event) {
+      if (event.key !== 'Escape') return
+      setNavigationLocationKey(null)
+      navigationButtonRef.current?.focus()
+    }
+
+    document.addEventListener('keydown', closeNavigationOnEscape)
+    return () => document.removeEventListener('keydown', closeNavigationOnEscape)
+  }, [isNavigationOpen])
+
   return (
     <header className="site-header">
       <Link aria-label="Mis Eventos, explorar eventos" className="brand" to="/events">
         <span aria-hidden="true" className="brand-mark">ME</span>
         <span>Mis Eventos</span>
       </Link>
-      <nav aria-label="Navegación principal" className="main-navigation">
-        <NavLink className={pathname === '/' ? 'active' : undefined} end to="/events">Eventos</NavLink>
-        <NavLink to="/events/new">Crear evento</NavLink>
-        {isAuthenticated && <NavLink to="/my-events">Mis eventos</NavLink>}
-        {isAuthenticated && auth.user.role === 'ADMIN' && <NavLink to="/admin/users">Administración</NavLink>}
+      <button
+        aria-controls="main-navigation"
+        aria-expanded={isNavigationOpen}
+        aria-label={isNavigationOpen ? 'Cerrar navegación' : 'Abrir navegación'}
+        className="mobile-nav-toggle"
+        onClick={() => setNavigationLocationKey(isNavigationOpen ? null : location.key)}
+        ref={navigationButtonRef}
+        type="button"
+      >
+        <span aria-hidden="true" className={isNavigationOpen ? 'mobile-nav-icon is-open' : 'mobile-nav-icon'} />
+      </button>
+      <nav
+        aria-label="Navegación principal"
+        className={`main-navigation${isNavigationOpen ? ' is-open' : ''}`}
+        id="main-navigation"
+      >
+        {navigationLinks.map((item, index) => (
+          <span className="main-navigation-item" key={item.to}>
+            {index > 0 && navigationLinks[index - 1].section !== item.section && (
+              <span aria-hidden="true" className="main-navigation-divider" />
+            )}
+            <NavLink
+              className={({ isActive }) => [
+                isActive ? 'active' : '',
+                item.to === '/register' ? 'button button-primary header-signup-link' : '',
+                item.to === '/login' ? 'header-login-link' : '',
+              ].filter(Boolean).join(' ')}
+              end={item.to === '/events'}
+              onClick={() => setNavigationLocationKey(null)}
+              to={item.to}
+            >
+              {item.label}
+            </NavLink>
+          </span>
+        ))}
       </nav>
-      <div className="header-actions">
-        {isAuthenticated ? (
+      {isAuthenticated && (
+        <div className="header-actions">
           <div className="user-menu" ref={userMenuRef}>
             <button
               aria-controls="user-navigation-menu"
@@ -77,8 +126,9 @@ export default function AppHeader({ auth }) {
                     {ROLE_LABELS[auth.user.role] || 'Usuario'} <small>{auth.user.role || ''}</small>
                   </span>
                 </div>
-                <Link className="user-menu-item" onClick={() => setIsUserMenuOpen(false)} to="/profile">Perfil</Link>
-                {auth.user.role === 'ADMIN' && <Link className="user-menu-item" onClick={() => setIsUserMenuOpen(false)} to="/admin/users">Administrar usuarios</Link>}
+                {accountLinks.map((item) => (
+                  <Link className="user-menu-item" key={item.to} onClick={() => setIsUserMenuOpen(false)} to={item.to}>{item.label}</Link>
+                ))}
                 <button aria-disabled="true" className="user-menu-item user-menu-disabled" disabled type="button">
                   <span>Ajustes</span><small>Próximamente</small>
                 </button>
@@ -88,13 +138,8 @@ export default function AppHeader({ auth }) {
               </nav>
             )}
           </div>
-        ) : (
-          <>
-            <Link className="header-login-link" to="/login">Iniciar sesión</Link>
-            <Link className="button button-primary header-signup-link" to="/register">Únete gratis</Link>
-          </>
-        )}
-      </div>
+        </div>
+      )}
     </header>
   )
 }
