@@ -50,6 +50,17 @@ Local URLs (ports from `docker-compose.yml`):
 - Swagger: <http://localhost:5000/apidocs/>
 - OpenAPI specification: <http://localhost:5000/apispec_1.json>
 
+## Production frontend
+
+The production frontend is published at
+<https://mis-eventos-frontend-h2j3.onrender.com/>. Set `VITE_API_BASE_URL`
+in the frontend build environment to the backend's public HTTPS URL ending in
+`/api/v1`, and set `FRONTEND_ORIGIN` on the backend to
+`https://mis-eventos-frontend-h2j3.onrender.com` for credentialed
+cross-origin requests. The repository does not specify the public backend
+hostname. See the [production deployment guide](docs/deployment.md) for
+environment and image-storage details.
+
 ## Local configuration and external services
 
 The root template uses local development defaults for PostgreSQL, JWT lifetime, and application labels. Compose provides local PostgreSQL credentials in `docker-compose.yml`; these are not production credentials. Never copy production secrets into a local environment. The local JWT key is generated automatically and must never be shared or committed.
@@ -204,3 +215,9 @@ npm run build
 - `scripts/dev.py`: development automation and test reports.
 
 Also see the [deployment guide](docs/deployment.md), [backend documentation](backend/README.md), and [frontend documentation](frontend/README.md).
+
+The [architecture guide](docs/architecture.md) adds end-to-end Mermaid
+diagrams for frontend/API traffic, authentication, event reads, database
+migrations, roles, and image handling. It marks external production settings
+that are not present in the repository, including the backend hostname and the
+current distinction between Cloudinary uploads and legacy R2 image URLs.
