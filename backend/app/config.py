@@ -5,6 +5,7 @@ import os
 from app.settings import (
     APP_ENVIRONMENT_ENV,
     APP_VERSION_ENV,
+    CLOUDINARY_URL_ENV,
     DATABASE_URL_ENV,
     DEFAULT_ACCESS_TOKEN_TTL_SECONDS,
     DEFAULT_APP_ENVIRONMENT,
@@ -18,11 +19,6 @@ from app.settings import (
     JWT_SECRET_KEY_ENV,
     LOG_LEVEL_ENV,
     MAX_EVENT_IMAGE_REQUEST_SIZE_BYTES,
-    R2_ACCESS_KEY_ID_ENV,
-    R2_ACCOUNT_ID_ENV,
-    R2_BUCKET_NAME_ENV,
-    R2_PUBLIC_BASE_URL_ENV,
-    R2_SECRET_ACCESS_KEY_ENV,
     SERVICE_NAME_ENV,
 )
 
@@ -85,9 +81,5 @@ def load_config() -> dict[str, object]:
         "APP_ENVIRONMENT": environment,
         "APP_VERSION": os.getenv(APP_VERSION_ENV, DEFAULT_APP_VERSION),
         "LOG_LEVEL": os.getenv(LOG_LEVEL_ENV, DEFAULT_LOG_LEVEL),
-        R2_ACCOUNT_ID_ENV: os.getenv(R2_ACCOUNT_ID_ENV, "").strip(),
-        R2_ACCESS_KEY_ID_ENV: os.getenv(R2_ACCESS_KEY_ID_ENV, "").strip(),
-        R2_SECRET_ACCESS_KEY_ENV: os.getenv(R2_SECRET_ACCESS_KEY_ENV, "").strip(),
-        R2_BUCKET_NAME_ENV: os.getenv(R2_BUCKET_NAME_ENV, "").strip(),
-        R2_PUBLIC_BASE_URL_ENV: os.getenv(R2_PUBLIC_BASE_URL_ENV, "").strip(),
+        CLOUDINARY_URL_ENV: os.getenv(CLOUDINARY_URL_ENV, "").strip(),
     }

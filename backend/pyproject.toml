@@ -16,8 +16,8 @@ dependencies = [
     "prometheus-client (>=0.23,<1)",
     "gunicorn (>=26,<27)",
     "flask-cors (>=6,<7)",
-    "boto3 (>=1.42,<2.0)",
-    "pillow (>=11,<13)"
+    "pillow (>=11,<13)",
+    "cloudinary (>=1.46.3,<2.0.0)"
 ]
 
 

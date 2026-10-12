@@ -34,7 +34,7 @@ from app.infrastructure.repositories.sqlalchemy_session_repository import (
 from app.infrastructure.repositories.sqlalchemy_user_repository import (
     SQLAlchemyUserRepository,
 )
-from app.infrastructure.storage.r2 import create_r2_client
+from app.infrastructure.storage.cloudinary_storage import create_cloudinary_storage
 
 
 def get_health_service() -> HealthService:
@@ -67,8 +67,7 @@ def get_event_service() -> EventService:
     """Build the event application service with the current database session."""
     image_service = EventImageService(
         repository=SQLAlchemyEventImageRepository(session=db.session),
-        config=current_app.config,
-        client_factory=lambda: create_r2_client(current_app.config),
+        client_factory=lambda: create_cloudinary_storage(current_app.config),
     )
     return EventService(
         event_repository=SQLAlchemyEventRepository(session=db.session),
