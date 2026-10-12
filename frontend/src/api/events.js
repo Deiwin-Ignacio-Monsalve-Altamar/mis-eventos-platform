@@ -95,6 +95,12 @@ export async function getSessionOccupancy(eventId, sessionId) {
   )
 }
 
+/** Read an owner-authorized event roster, including optional session states. */
+export async function listEventAttendees(eventId) {
+  const response = await request(`/events/${encodeURIComponent(eventId)}/attendees`)
+  return response.attendees
+}
+
 /** Create an event using the current cookie-authenticated user. */
 export async function createEvent(event, images = []) {
   const response = await request('/events', {

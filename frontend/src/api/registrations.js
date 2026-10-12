@@ -22,6 +22,20 @@ export async function listMySessionRegistrations({ page = 1, pageSize = 20 } = {
   return request(`/session-registrations/me?${parameters.toString()}`)
 }
 
+/** Return all session enrollment states for one event from the paginated self API. */
+export async function listMySessionRegistrationsForEvent(eventId) {
+  let page = 1
+  let totalPages = 1
+  const registrations = []
+  while (page <= totalPages) {
+    const result = await listMySessionRegistrations({ page, pageSize: 100 })
+    registrations.push(...result.registrations.filter((item) => item.event.id === Number(eventId)))
+    totalPages = result.pagination.total_pages
+    page += 1
+  }
+  return registrations
+}
+
 /** Read activity counts for the authenticated user's own event registrations. */
 export async function getMyRegistrationSummary() {
   const response = await request('/registrations/me/summary')
@@ -57,6 +71,20 @@ export async function registerForEvent(eventId) {
 /** Cancel only the authenticated user's own registration for an event. */
 export async function cancelMyEventRegistration(eventId) {
   return request(`/events/${encodeURIComponent(eventId)}/registrations/me`, {
+    method: 'DELETE',
+  })
+}
+
+/** Enroll the authenticated user's active event registration in a session. */
+export async function registerForSession(eventId, sessionId) {
+  return request(`/events/${encodeURIComponent(eventId)}/sessions/${encodeURIComponent(sessionId)}/attendees`, {
+    method: 'POST',
+  })
+}
+
+/** Cancel only the current user's session enrollment. */
+export async function cancelMySessionRegistration(eventId, sessionId) {
+  return request(`/events/${encodeURIComponent(eventId)}/sessions/${encodeURIComponent(sessionId)}/attendees/me`, {
     method: 'DELETE',
   })
 }

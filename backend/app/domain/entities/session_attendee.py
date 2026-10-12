@@ -25,6 +25,20 @@ class SessionAttendee:
 
 
 @dataclass(frozen=True, slots=True)
+class EventRosterEntry:
+    """Expose an event enrollment with its optional session enrollment."""
+
+    user_id: int
+    first_name: str
+    last_name: str
+    email: str
+    registered_at: datetime
+    session_id: int | None
+    session_title: str | None
+    session_status: str | None
+
+
+@dataclass(frozen=True, slots=True)
 class SessionRegistrationDetails:
     """Represent a caller's session enrollment with its event and schedule."""
 

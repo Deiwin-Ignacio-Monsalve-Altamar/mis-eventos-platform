@@ -2,8 +2,8 @@
 
 import assert from 'node:assert/strict'
 import { afterEach, test } from 'node:test'
-import { createEvent, createEventSession, deleteEvent, deleteEventSession, getEvent, getEventCapacity, getMyEvent, getMyEventDashboard, getMyEventMetrics, getRecommendedEvents, getSessionOccupancy, listEventSessions, listEvents, listMyEvents, updateEvent, updateEventSession } from '../../src/api/events.js'
-import { cancelMyEventRegistration, findMyEventRegistration, getMyRegistrationSummary, listMyRegistrations, registerForEvent } from '../../src/api/registrations.js'
+import { createEvent, createEventSession, deleteEvent, deleteEventSession, getEvent, getEventCapacity, getMyEvent, getMyEventDashboard, getMyEventMetrics, getRecommendedEvents, getSessionOccupancy, listEventAttendees, listEventSessions, listEvents, listMyEvents, updateEvent, updateEventSession } from '../../src/api/events.js'
+import { cancelMyEventRegistration, cancelMySessionRegistration, findMyEventRegistration, getMyRegistrationSummary, listMyRegistrations, listMySessionRegistrationsForEvent, registerForEvent, registerForSession } from '../../src/api/registrations.js'
 
 const originalFetch = globalThis.fetch
 
@@ -268,5 +268,27 @@ test('registration filters, summary, and cancellation use current-user endpoints
     { url: '/api/v1/registrations/me?page=1&page_size=20&status=registered&period=upcoming', method: 'GET' },
     { url: '/api/v1/registrations/me/summary', method: 'GET' },
     { url: '/api/v1/events/42/registrations/me', method: 'DELETE' },
+  ])
+})
+
+test('event roster and session enrollment reuse the owner and self-service endpoints', async () => {
+  const calls = []
+  globalThis.fetch = async (url, options = {}) => {
+    calls.push({ url, method: options.method || 'GET' })
+    if (url === '/api/v1/session-registrations/me?page=1&page_size=100') {
+      return { ok: true, status: 200, json: async () => ({ registrations: [{ event: { id: 42 }, session: { id: 4 }, status: 'active' }], pagination: { total_pages: 1 } }) }
+    }
+    return { ok: true, status: options.method === 'DELETE' ? 204 : 200, json: async () => ({ attendees: [{ user_id: 9 }] }) }
+  }
+
+  assert.deepEqual(await listEventAttendees(42), [{ user_id: 9 }])
+  assert.deepEqual(await listMySessionRegistrationsForEvent(42), [{ event: { id: 42 }, session: { id: 4 }, status: 'active' }])
+  await registerForSession(42, 4)
+  await cancelMySessionRegistration(42, 4)
+  assert.deepEqual(calls, [
+    { url: '/api/v1/events/42/attendees', method: 'GET' },
+    { url: '/api/v1/session-registrations/me?page=1&page_size=100', method: 'GET' },
+    { url: '/api/v1/events/42/sessions/4/attendees', method: 'POST' },
+    { url: '/api/v1/events/42/sessions/4/attendees/me', method: 'DELETE' },
   ])
 })

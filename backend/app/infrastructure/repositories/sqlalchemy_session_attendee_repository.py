@@ -11,6 +11,7 @@ from app.core.exceptions import (
     ValidationError,
 )
 from app.domain.entities.session_attendee import (
+    EventRosterEntry,
     SessionAttendee,
     SessionOccupancy,
     SessionRegistrationDetails,
@@ -74,6 +75,38 @@ class SQLAlchemySessionAttendeeRepository:
             .order_by(User.last_name.asc(), User.first_name.asc(), User.id.asc())
         ).all()
         return [SessionAttendee(*row) for row in rows]
+
+    def list_event_attendees(self, event_id: int) -> list[EventRosterEntry]:
+        """Load event attendees and optional session enrollments in one query."""
+        rows = self._session.execute(
+            select(
+                User.id,
+                User.first_name,
+                User.last_name,
+                User.email,
+                Registration.registered_at,
+                EventSession.id,
+                EventSession.title,
+                SessionRegistration.status,
+            )
+            .join(Registration, Registration.user_id == User.id)
+            .outerjoin(
+                SessionRegistration,
+                SessionRegistration.registration_id == Registration.id,
+            )
+            .outerjoin(EventSession, EventSession.id == SessionRegistration.session_id)
+            .where(
+                Registration.event_id == event_id,
+                Registration.status == "registered",
+            )
+            .order_by(
+                User.last_name.asc(),
+                User.first_name.asc(),
+                User.id.asc(),
+                EventSession.starts_at.asc(),
+            )
+        ).all()
+        return [EventRosterEntry(*row) for row in rows]
 
     def get_occupancy(self, event_id: int, session_id: int) -> SessionOccupancy:
         """Read capacity and qualifying occupancy from one database snapshot."""

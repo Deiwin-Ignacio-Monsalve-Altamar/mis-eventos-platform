@@ -19,7 +19,11 @@ from app.core.exceptions import (
     NotFoundError,
     ValidationError,
 )
-from app.domain.entities.session_attendee import SessionAttendee, SessionOccupancy
+from app.domain.entities.session_attendee import (
+    EventRosterEntry,
+    SessionAttendee,
+    SessionOccupancy,
+)
 from app.domain.entities.session_record import SessionRecord
 from app.domain.entities.user_account import UserAccount
 from app.domain.entities.user_role import UserRole
@@ -58,6 +62,18 @@ def session_client(monkeypatch):
             "Rivera",
             "alex@example.test",
             datetime(2030, 1, 1, 9, tzinfo=UTC),
+        )
+    ]
+    attendee_service.list_event_attendees.return_value = [
+        EventRosterEntry(
+            21,
+            "Alex",
+            "Rivera",
+            "alex@example.test",
+            datetime(2030, 1, 1, 9, tzinfo=UTC),
+            2,
+            "Talk",
+            "active",
         )
     ]
     attendee_service.get_occupancy.return_value = SessionOccupancy(20, 3, 17)
@@ -264,6 +280,23 @@ def test_capacity_and_attendee_roster_endpoints(session_client):
     assert roster.json["attendees"][0]["user_id"] == 21
     attendee_service.list_attendees.assert_called_once_with(
         1, 2, ACCOUNT.id, is_admin=False
+    )
+
+
+def test_event_roster_endpoint_returns_event_and_session_registration_details(
+    session_client,
+):
+    client, service, _ = session_client
+    add_cookie(client)
+
+    response = client.get("/api/v1/events/1/attendees")
+
+    assert response.status_code == HTTPStatus.OK
+    assert response.json["attendees"][0]["email"] == "alex@example.test"
+    assert response.json["attendees"][0]["session_title"] == "Talk"
+    assert response.json["attendees"][0]["session_status"] == "active"
+    service.attendee_service.list_event_attendees.assert_called_once_with(
+        1, ACCOUNT.id, is_admin=False
     )
 
 

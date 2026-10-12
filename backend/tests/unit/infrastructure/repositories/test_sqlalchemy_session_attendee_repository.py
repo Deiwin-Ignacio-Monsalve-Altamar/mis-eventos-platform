@@ -1,6 +1,7 @@
 """Verify attendee persistence using a mocked SQLAlchemy session."""
 
 from concurrent.futures import ThreadPoolExecutor
+from datetime import UTC, datetime
 from threading import Barrier, Lock
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -14,10 +15,45 @@ from app.core.exceptions import (
     NotFoundError,
     ValidationError,
 )
-from app.domain.entities.session_attendee import SessionOccupancy
+from app.domain.entities.session_attendee import EventRosterEntry, SessionOccupancy
 from app.infrastructure.repositories.sqlalchemy_session_attendee_repository import (
     SQLAlchemySessionAttendeeRepository,
 )
+
+
+def test_event_roster_uses_one_event_scoped_query_and_maps_session_state():
+    registered_at = datetime(2030, 1, 1, tzinfo=UTC)
+    session = Mock()
+    session.execute.return_value.all.return_value = [
+        (
+            21,
+            "Alex",
+            "Rivera",
+            "alex@example.test",
+            registered_at,
+            9,
+            "Opening talk",
+            "active",
+        )
+    ]
+    repository = SQLAlchemySessionAttendeeRepository(session)
+
+    attendees = repository.list_event_attendees(4)
+
+    assert attendees == [
+        EventRosterEntry(
+            21,
+            "Alex",
+            "Rivera",
+            "alex@example.test",
+            registered_at,
+            9,
+            "Opening talk",
+            "active",
+        )
+    ]
+    assert "registrations.event_id =" in str(session.execute.call_args.args[0])
+    session.execute.assert_called_once()
 
 
 def test_enroll_locks_session_and_creates_session_registration():

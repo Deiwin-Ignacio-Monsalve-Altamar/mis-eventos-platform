@@ -61,6 +61,17 @@ def test_roster_is_limited_to_event_creator(attendee_service):
         service.list_attendees(4, 9, 22)
 
 
+def test_event_roster_is_limited_to_event_creator_and_admin_override(attendee_service):
+    service, repository = attendee_service
+    repository.list_event_attendees.return_value = []
+
+    assert service.list_event_attendees(4, 7) == []
+    with pytest.raises(AuthorizationError):
+        service.list_event_attendees(4, 22)
+    assert service.list_event_attendees(4, 22, is_admin=True) == []
+    assert repository.list_event_attendees.call_count == 2
+
+
 def test_missing_event_or_session_is_rejected(attendee_service):
     """Reject nonexistent events and sessions before repository mutations."""
     service, repository = attendee_service
