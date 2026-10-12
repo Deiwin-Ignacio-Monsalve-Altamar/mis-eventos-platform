@@ -1,7 +1,6 @@
 services:
   db:
     image: postgres:16-alpine
-    container_name: mis-eventos-db
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-mis_eventos}
@@ -21,7 +20,6 @@ services:
     build:
       context: ./backend
     image: mis-eventos-backend:local
-    container_name: mis-eventos-backend
     restart: unless-stopped
     command: ["python", "-m", "app"]
     environment:
@@ -67,7 +65,6 @@ services:
   frontend:
     build:
       context: ./frontend
-    container_name: mis-eventos-frontend
     restart: unless-stopped
     environment:
       API_PROXY_TARGET: http://backend:5000
