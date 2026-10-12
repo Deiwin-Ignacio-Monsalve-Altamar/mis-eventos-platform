@@ -1,13 +1,15 @@
 /** Define the application shell and the public route table. */
 
-import { Link, Route, Routes, useLocation } from 'react-router-dom'
+import { Link, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { AppProvider } from './state/AppState.jsx'
 import useAppState from './state/useAppState.js'
 import AppHeader from './components/AppHeader.jsx'
+import AuthLayout from './components/AuthLayout.jsx'
 import CreateEventPage from './pages/CreateEventPage.jsx'
 import EventDetailsPage from './pages/EventDetailsPage.jsx'
 import EventListPage from './pages/EventListPage.jsx'
 import LoginPage from './pages/LoginPage.jsx'
+import AdminProfile from './pages/AdminProfile.jsx'
 import ProfilePage from './pages/ProfilePage.jsx'
 import RegisterPage from './pages/RegisterPage.jsx'
 import MyEventsPage from './pages/MyEventsPage.jsx'
@@ -16,6 +18,7 @@ import SiteFooter from './components/SiteFooter.jsx'
 import RequireAuthentication from './components/RequireAuthentication.jsx'
 import RequireRole from './components/RequireRole.jsx'
 import AdminUsersPage from './pages/AdminUsersPage.jsx'
+import { LoadingMessage } from './components/RequestFeedback.jsx'
 import './App.css'
 
 /** Render the application provider, shell, and page routes. */
@@ -33,14 +36,15 @@ function ApplicationRoutes() {
   const { auth } = state
   const { pathname } = useLocation()
   const isAuthenticationPage = pathname === '/login' || pathname === '/register'
+  const isEntryRoute = pathname === '/'
 
   return (
-    <div className={`app-shell${isAuthenticationPage ? ' app-shell-auth' : ''}`}>
-      {!isAuthenticationPage && <AppHeader auth={auth} />}
+    <div className={`app-shell${isAuthenticationPage || isEntryRoute ? ' app-shell-auth' : ''}`}>
+      {!isAuthenticationPage && !isEntryRoute && <AppHeader auth={auth} />}
 
       <main className="page-container">
         <Routes>
-          <Route element={<EventListPage />} path="/" />
+          <Route element={<RoleHome auth={auth} />} path="/" />
           <Route element={<EventListPage />} path="/events" />
           <Route element={<CreateEventPage />} path="/events/new" />
           <Route element={<EventDetailsPage />} path="/events/:eventId" />
@@ -49,13 +53,39 @@ function ApplicationRoutes() {
           <Route element={<RequireAuthentication><ProfilePage /></RequireAuthentication>} path="/profile" />
           <Route element={<RequireAuthentication><MyEventsPage /></RequireAuthentication>} path="/my-events" />
           <Route element={<RequireAuthentication><MyRegistrationsPage /></RequireAuthentication>} path="/my-registrations" />
+          <Route element={<RequireAuthentication><RequireRole role="ADMIN"><AdminProfile user={auth.user} /></RequireRole></RequireAuthentication>} path="/admin/dashboard" />
           <Route element={<RequireAuthentication><RequireRole role="ADMIN"><AdminUsersPage /></RequireRole></RequireAuthentication>} path="/admin/users" />
           <Route element={<NotFoundPage />} path="*" />
         </Routes>
       </main>
-      {!isAuthenticationPage && <SiteFooter auth={auth} />}
+      {!isAuthenticationPage && !isEntryRoute && <SiteFooter auth={auth} />}
     </div>
   )
+}
+
+/** Use the root route as a role-aware entry point without redirecting while auth loads. */
+function RoleHome({ auth }) {
+  if (auth.status === 'loading') {
+    return (
+      <AuthLayout>
+        <section aria-label="Verificación de sesión" className="auth-panel">
+          <LoadingMessage>Estamos verificando tu sesión…</LoadingMessage>
+        </section>
+      </AuthLayout>
+    )
+  }
+
+  const destinations = {
+    ATTENDEE: '/events',
+    ORGANIZER: '/my-events',
+    ADMIN: '/admin/dashboard',
+  }
+  const destination = auth.user?.role ? destinations[auth.user.role] : null
+
+  if (auth.status !== 'authenticated' || !destination) {
+    return <LoginPage defaultDestination="/" />
+  }
+  return <Navigate replace to={destination} />
 }
 
 /** Explain when the requested location does not match a supported route. */

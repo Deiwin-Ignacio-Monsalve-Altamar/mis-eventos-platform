@@ -18,15 +18,16 @@ test('application provider renders every required route without a blank screen',
     const { default: App } = await vite.ssrLoadModule('/src/App.jsx')
     const { default: AppHeader } = await vite.ssrLoadModule('/src/components/AppHeader.jsx')
     const routes = [
-      ['/', 'Planes con otra energía'],
+      ['/', 'Estamos verificando tu sesión…'],
       ['/events', 'Eventos'],
       ['/events/42', 'Estamos cargando el evento…'],
       ['/events/new', 'Estamos verificando tu sesión…'],
-      ['/login', '¡Qué bueno verte!'],
+      ['/login', 'Bienvenido de nuevo'],
       ['/register', 'Crea tu cuenta'],
       ['/profile', 'Estamos verificando tu sesión…'],
       ['/my-events', 'Estamos verificando tu sesión…'],
       ['/my-registrations', 'Estamos verificando tu sesión…'],
+      ['/admin/dashboard', 'Estamos verificando tu sesión…'],
       ['/admin/users', 'Estamos verificando tu sesión…'],
       ['/route-that-does-not-exist', 'Página no encontrada'],
     ]
@@ -41,12 +42,9 @@ test('application provider renders every required route without a blank screen',
       )
       assert.ok(html.includes(expectedContent), `Route ${location} did not render.`)
       if (location === '/') {
-        assert.ok(html.includes('href="/events"'), 'The home route must show event navigation.')
-        assert.ok(html.includes('href="/login"'), 'The signed-out header must link to login.')
-        assert.ok(html.includes('href="/register"'), 'The signed-out header must link to registration.')
-        assert.ok(html.includes('href="/events/new"'), 'The header must link to event creation.')
-        assert.ok(!html.includes('href="/profile">Iniciar sesión'), 'Signed-out login must not point to the profile.')
-        assert.ok(html.includes('site-footer'), 'The public shell must render its footer.')
+        assert.ok(html.includes('aria-label="Verificación de sesión"'), 'The root route must wait for authentication.')
+        assert.ok(!html.includes('site-header'), 'The root entry must not flash public navigation while authentication loads.')
+        assert.ok(!html.includes('site-footer'), 'The root entry must not flash the public footer while authentication loads.')
       }
       if (location === '/login' || location === '/register') {
         assert.ok(!html.includes('site-footer'), 'Authentication pages must not render the shared footer.')

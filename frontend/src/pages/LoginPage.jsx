@@ -8,7 +8,7 @@ import useAppState from '../state/useAppState.js'
 import { validateLogin } from './authValidation.js'
 
 /** Submit login credentials without persisting them in browser storage. */
-export default function LoginPage() {
+export default function LoginPage({ defaultDestination = '/profile' }) {
   const { state, signIn } = useAppState()
   const navigate = useNavigate()
   const location = useLocation()
@@ -29,7 +29,7 @@ export default function LoginPage() {
     setSubmitting(true)
     try {
       await signIn(credentials)
-      navigate(location.state?.from || '/profile', { replace: true })
+      navigate(location.state?.from || defaultDestination, { replace: true })
     } catch {
       // The provider stores the shared authentication error for display.
     } finally {
@@ -40,9 +40,9 @@ export default function LoginPage() {
   return (
     <AuthLayout>
       <section aria-labelledby="login-heading" className="auth-panel">
-        <p className="eyebrow">Tu cuenta</p>
-        <h1 id="login-heading">¡Qué bueno verte!</h1>
-        <p className="auth-intro">Ingresa para descubrir eventos y tener tus planes siempre a mano.</p>
+        <p className="eyebrow">TU ESPACIO TE ESPERA</p>
+        <h1 id="login-heading">Bienvenido de nuevo</h1>
+        <p className="auth-intro">Ingresa para descubrir eventos, organizar experiencias y volver a tus planes.</p>
         {location.state?.registrationComplete && <p className="feedback feedback-success" role="status">Tu cuenta está lista. Inicia sesión para continuar.</p>}
         <AuthErrorMessage error={state.auth.error} />
         <form className="app-form" onSubmit={handleSubmit}>
