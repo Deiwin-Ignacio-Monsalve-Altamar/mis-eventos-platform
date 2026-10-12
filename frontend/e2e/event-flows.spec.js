@@ -30,6 +30,7 @@ const startingSession = {
 async function mockApi(page, {
   authenticated = false,
   owner = false,
+  role = 'ATTENDEE',
   failRegistration = false,
   failLogout = false,
 } = {}) {
@@ -47,10 +48,10 @@ async function mockApi(page, {
     if (path === '/auth/me' && method === 'GET') {
       status = authenticated ? 200 : 401
       body = authenticated
-        ? { user: { id: 12, email: 'owner@example.test', first_name: 'Alex', last_name: 'Rivera' } }
+        ? { user: { id: 12, email: 'owner@example.test', first_name: 'Alex', last_name: 'Rivera', role } }
         : { error: { code: 'unauthorized', message: 'Authentication required.' } }
     } else if (path === '/auth/login' && method === 'POST') {
-      body = { user: { id: 12, email: 'owner@example.test', first_name: 'Alex', last_name: 'Rivera' } }
+      body = { user: { id: 12, email: 'owner@example.test', first_name: 'Alex', last_name: 'Rivera', role } }
     } else if (path === '/auth/logout' && method === 'POST') {
       status = failLogout ? 500 : 200
       body = failLogout
@@ -186,7 +187,7 @@ test('settings stay disabled, Escape closes the menu, and outside clicks dismiss
   await expect(page).toHaveURL(/\/events$/)
 })
 
-test('avatar logout clears the session, redirects to events, and fits a mobile viewport', async ({ page }) => {
+test('attendee logout clears the session, redirects to events, and fits a mobile viewport', async ({ page }) => {
   await mockApi(page, { authenticated: true })
   await page.setViewportSize({ width: 375, height: 812 })
   await page.goto('/events')
@@ -211,6 +212,19 @@ test('avatar logout clears the session, redirects to events, and fits a mobile v
   await expect(page.getByRole('button', { name: 'Cerrar sesión' })).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Abrir menú de usuario' })).toHaveCount(0)
 })
+
+for (const role of ['ORGANIZER', 'ADMIN']) {
+  test(`${role.toLowerCase()} logout clears the session and redirects to login`, async ({ page }) => {
+    await mockApi(page, { authenticated: true, role })
+    await page.goto('/events')
+    await page.getByRole('button', { name: 'Abrir menú de usuario' }).click()
+    await page.getByRole('navigation', { name: 'Menú de usuario' }).getByRole('button', { name: 'Cerrar sesión' }).click()
+
+    await expect(page).toHaveURL(/\/login$/)
+    await expect(page.getByRole('heading', { name: 'Bienvenido de nuevo' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Abrir menú de usuario' })).toHaveCount(0)
+  })
+}
 
 test('failed logout keeps the user authenticated and shows an error', async ({ page }) => {
   await mockApi(page, { authenticated: true, failLogout: true })

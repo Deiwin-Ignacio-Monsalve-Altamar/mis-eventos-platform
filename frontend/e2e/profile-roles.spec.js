@@ -67,7 +67,7 @@ for (const { role, profileHeading } of [
     await page.getByRole('button', { name: 'Iniciar sesión' }).click()
 
     await expect(page).toHaveURL('/profile')
-    await expect(page.getByRole('heading', { name: profileHeading })).toBeVisible()
+    await expect(page.getByRole('heading', { name: profileHeading, exact: true })).toBeVisible()
   })
 }
 
