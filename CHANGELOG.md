@@ -2,7 +2,13 @@
 
 All notable changes to Mis Eventos are documented in this file.
 
-## [Unreleased]
+## 1.0.0
+
+### Fixed
+
+- Handled unexpected HTTP connection closures during service URL checks in the local development startup script.
+- Improved startup error handling so a failed secondary URL probe does not cause an unhandled exception.
+- Preserved PostgreSQL health checks and backend readiness validation.
 
 ### Added
 

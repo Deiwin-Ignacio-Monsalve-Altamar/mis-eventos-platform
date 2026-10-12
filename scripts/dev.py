@@ -7,6 +7,7 @@ import html
 import json
 import os
 import re
+import secrets
 import shutil
 import subprocess
 import sys
@@ -29,10 +30,14 @@ WAIT_TIMEOUT_SECONDS = 90
 
 def command_output(command: list[str], cwd: Path = ROOT) -> tuple[int, str]:
     """Run a command quietly and return its exit code and combined output."""
+    environment = os.environ.copy()
+    if command[:2] == list(COMPOSE):
+        environment.pop("JWT_SECRET_KEY", None)
     try:
         result = subprocess.run(
             command,
             cwd=cwd,
+            env=environment,
             check=False,
             capture_output=True,
             text=True,
@@ -47,8 +52,13 @@ def command_output(command: list[str], cwd: Path = ROOT) -> tuple[int, str]:
 def run_command(command: list[str], cwd: Path = ROOT) -> int:
     """Run a command with live output and return its exit code."""
     print(f"\n$ {' '.join(command)}", flush=True)
+    environment = os.environ.copy()
+    if command[:2] == list(COMPOSE):
+        environment.pop("JWT_SECRET_KEY", None)
     try:
-        return subprocess.run(command, cwd=cwd, check=False).returncode
+        return subprocess.run(
+            command, cwd=cwd, env=environment, check=False
+        ).returncode
     except OSError as error:
         print(f"ERROR: unable to start command: {error}", file=sys.stderr)
         return 127
@@ -81,7 +91,7 @@ def stream_command(command: list[str], cwd: Path) -> tuple[int, str]:
 
 def compose_command(*arguments: str) -> list[str]:
     """Build a Docker Compose command using the repository configuration."""
-    return [*COMPOSE, *arguments]
+    return [*COMPOSE, "--env-file", str(ROOT / ".env"), *arguments]
 
 
 def check_tool(name: str, version_arguments: tuple[str, ...] = ("--version",)) -> bool:
@@ -195,6 +205,91 @@ def read_environment_value(path: Path, key: str) -> str | None:
     return None
 
 
+def write_missing_jwt_secret(path: Path) -> bool:
+    """Fill only an absent or blank local JWT key without printing the value."""
+    content = path.read_text(encoding="utf-8")
+    lines = content.splitlines()
+    found = False
+    for index, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith("JWT_SECRET_KEY") and "=" in stripped:
+            name, value = stripped.split("=", 1)
+            if name.strip() != "JWT_SECRET_KEY":
+                continue
+            found = True
+            value = value.strip().strip("\"'")
+            if value:
+                if len(value.encode("utf-8")) < 32:
+                    print(
+                        "ERROR: JWT_SECRET_KEY must contain at least 32 bytes; its value was preserved."
+                    )
+                    return False
+                return True
+            lines[index] = f"JWT_SECRET_KEY={secrets.token_urlsafe(48)}"
+            break
+    if not found:
+        lines.append(f"JWT_SECRET_KEY={secrets.token_urlsafe(48)}")
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    try:
+        path.chmod(0o600)
+    except OSError:
+        pass
+    print("Created a private local JWT_SECRET_KEY in .env.")
+    return True
+
+
+def ensure_local_environment() -> bool:
+    """Create missing local env files and validate the generated signing key."""
+    for template, destination in (
+        (ROOT / ".env.example", ROOT / ".env"),
+        (FRONTEND / ".env.example", FRONTEND / ".env"),
+    ):
+        if not destination.exists():
+            if not template.exists():
+                print(
+                    f"ERROR: expected template {template.relative_to(ROOT)} was not found."
+                )
+                return False
+            shutil.copyfile(template, destination)
+            try:
+                destination.chmod(0o600)
+            except OSError:
+                pass
+            print(f"Created {destination.relative_to(ROOT)} from its example template.")
+        else:
+            print(f"Preserving existing {destination.relative_to(ROOT)}.")
+    if not write_missing_jwt_secret(ROOT / ".env"):
+        return False
+    required_values = ("POSTGRES_DB", "POSTGRES_USER", "POSTGRES_PASSWORD")
+    empty = [
+        name
+        for name in required_values
+        if read_environment_value(ROOT / ".env", name) == ""
+    ]
+    if empty:
+        print(f"ERROR: remove empty overrides or set local values for: {', '.join(empty)} in .env.")
+        return False
+    ttl = read_environment_value(ROOT / ".env", "JWT_ACCESS_TOKEN_TTL_SECONDS")
+    if ttl is not None and (not ttl.isdigit() or int(ttl) <= 0):
+        print("ERROR: JWT_ACCESS_TOKEN_TTL_SECONDS must be a positive integer.")
+        return False
+    secure_cookie = read_environment_value(ROOT / ".env", "JWT_COOKIE_SECURE")
+    if secure_cookie is not None and secure_cookie.lower() not in {"true", "false"}:
+        print("ERROR: JWT_COOKIE_SECURE must be either true or false.")
+        return False
+    environment = read_environment_value(ROOT / ".env", "APP_ENVIRONMENT")
+    if (
+        environment == "production"
+        and secure_cookie is not None
+        and secure_cookie.lower() != "true"
+    ):
+        print(
+            "ERROR: JWT_COOKIE_SECURE must be true when APP_ENVIRONMENT is production."
+        )
+        return False
+    return True
+
+
 def install_dependencies() -> bool:
     """Install dependencies using Poetry and the checked-in npm lockfile."""
     poetry_command = [
@@ -220,38 +315,15 @@ def setup() -> int:
         print("Install the missing tool and rerun make setup.")
         return 1
 
-    templates = (
-        (ROOT / ".env.example", ROOT / ".env"),
-        (FRONTEND / ".env.example", FRONTEND / ".env"),
-    )
-    for template, destination in templates:
-        if destination.exists():
-            print(f"Preserving existing {destination.relative_to(ROOT)}.")
-        elif template.exists():
-            shutil.copyfile(template, destination)
-            print(f"Created {destination.relative_to(ROOT)} from its example template.")
-        else:
-            print(
-                f"ERROR: expected template {template.relative_to(ROOT)} was not found."
-            )
-            return 1
-
-    signing_key = read_environment_value(ROOT / ".env", "JWT_SECRET_KEY")
-    if signing_key is None or len(signing_key.encode("utf-8")) < 32:
-        print(
-            "ACTION REQUIRED: set JWT_SECRET_KEY in the root .env file (at least 32 bytes)."
-        )
-        print(
-            "Generate a local value with: python3 -c 'import secrets; print(secrets.token_urlsafe(48))'"
-        )
-        print(
-            "The generated value is not written automatically; keep it private and do not commit .env."
-        )
+    if not ensure_local_environment():
+        return 1
 
     if not install_dependencies():
-        print("ERROR: make setup did not complete. Review the failed command above and retry.")
+        print(
+            "ERROR: make setup did not complete. Review the failed command above and retry."
+        )
         return 1
-    print("Setup completed. Run make check, then make run.")
+    print("Setup completed. Run make run.")
     return 0
 
 
@@ -295,7 +367,7 @@ def probe_url(url: str, expected_status: int | None = None) -> tuple[bool, str]:
     try:
         with urllib.request.urlopen(url, timeout=3) as response:
             status = response.status
-    except (urllib.error.URLError, TimeoutError) as error:
+    except (urllib.error.URLError, TimeoutError, ConnectionError) as error:
         return False, str(
             error.reason if isinstance(error, urllib.error.URLError) else error
         )
@@ -372,19 +444,20 @@ def diagnose_failure(step: str) -> None:
 
 def up() -> int:
     """Build, start, migrate, and probe every configured Compose application service."""
-    if not check_tools(require_docker=True):
+    if not ensure_local_environment():
+        return 1
+    if not check_docker_tools():
         diagnose_failure("environment checks")
         return 1
     print("Preparing the db, backend, and frontend services from docker-compose.yml…")
-    code = run_command(compose_command("up", "--build", "-d"))
+    code = run_command(
+        compose_command("up", "--build", "-d", "db", "migrate", "backend", "frontend")
+    )
     if code != 0:
         diagnose_failure("docker compose up --build -d")
         return code
     if not wait_for_database():
         diagnose_failure("database startup")
-        return 1
-    if migrate() != 0:
-        diagnose_failure("database migration")
         return 1
     deadline = time.monotonic() + WAIT_TIMEOUT_SECONDS
     while time.monotonic() < deadline:
@@ -394,6 +467,25 @@ def up() -> int:
         time.sleep(2)
     diagnose_failure("frontend, backend, or API documentation health probe")
     return 1
+
+
+def check_docker_tools() -> bool:
+    """Check only host tools required by the Docker based run workflow."""
+    checks = [
+        check_tool("make"),
+        check_tool("docker"),
+        check_tool("docker", ("compose", "version")),
+    ]
+    code, output = command_output(["docker", "info", "--format", "{{.ServerVersion}}"])
+    if code == 0:
+        print(f"OK: Docker engine: {output.strip()}")
+    else:
+        print("ERROR: Docker is installed but its engine is unavailable.")
+        if output.strip():
+            print(output.strip())
+        checks.append(False)
+    checks.append(check_docker_configuration())
+    return all(checks)
 
 
 def status() -> int:
@@ -876,7 +968,7 @@ def lint() -> int:
 def dispatch(command: str) -> int:
     """Route a Make target to its local development implementation."""
     if command == "check":
-        return 0 if check_tools(require_docker=True) else 1
+        return 0 if check_docker_tools() else 1
     if command == "setup":
         return setup()
     if command == "up":
