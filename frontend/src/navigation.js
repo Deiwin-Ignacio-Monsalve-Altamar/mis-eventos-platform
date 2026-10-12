@@ -28,6 +28,33 @@ const ROLE_LINKS = {
   ],
 }
 
+const WORKSPACE_NAVIGATION = {
+  ORGANIZER: [
+    { heading: 'Espacio de trabajo', links: [
+      { label: 'Resumen', to: '/profile', icon: '◫' },
+      { label: 'Mis eventos', to: '/my-events', icon: '▦' },
+      { label: 'Crear evento', to: '/events/new', icon: '+' },
+    ] },
+    { heading: 'Descubrimiento', links: [
+      { label: 'Catálogo público', to: '/events', icon: '⌕' },
+    ] },
+  ],
+  ADMIN: [
+    { heading: 'Plataforma', links: [
+      { label: 'Vista general', to: '/admin/dashboard', icon: '◫' },
+      { label: 'Usuarios y roles', to: '/admin/users', icon: '♧' },
+    ] },
+    { heading: 'Eventos', links: [
+      { label: 'Mis eventos', to: '/my-events', icon: '▦' },
+      { label: 'Crear evento', to: '/events/new', icon: '+' },
+      { label: 'Catálogo público', to: '/events', icon: '⌕' },
+    ] },
+    { heading: 'Cuenta', links: [
+      { label: 'Perfil', to: '/profile', icon: '○' },
+    ] },
+  ],
+}
+
 /** Return role-appropriate links without treating presentation as authorization. */
 export function getNavigation(auth) {
   const isAuthenticated = auth?.status === 'authenticated' && Boolean(auth.user)
@@ -40,4 +67,23 @@ export function getNavigation(auth) {
     primaryLinks: [...PUBLIC_LINKS, ...roleLinks],
     accountLinks,
   }
+}
+
+/** Return the verified workspace destinations for organizer or administrator areas. */
+export function getWorkspaceNavigation(role) {
+  return WORKSPACE_NAVIGATION[role] || []
+}
+
+/** Keep public pages in the public shell and management paths in their role workspace. */
+export function getWorkspaceRole(auth, pathname) {
+  if (auth?.status !== 'authenticated' || !auth.user) return null
+  const { role } = auth.user
+  const isAdminPath = pathname.startsWith('/admin/')
+    || ['/profile', '/my-events', '/events/new'].includes(pathname)
+    || /^\/events\/\d+$/.test(pathname)
+  const isOrganizerPath = ['/profile', '/my-events', '/events/new'].includes(pathname)
+    || /^\/events\/\d+$/.test(pathname)
+  if (role === 'ADMIN' && isAdminPath) return role
+  if (role === 'ORGANIZER' && isOrganizerPath) return role
+  return null
 }

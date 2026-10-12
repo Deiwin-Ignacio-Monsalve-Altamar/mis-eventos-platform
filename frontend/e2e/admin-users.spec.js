@@ -68,7 +68,7 @@ test('rapid repeated promotion activation sends only one request', async ({ page
   const getPromotionCount = await installAdminApi(page, { delayPromotion: true })
   page.on('dialog', (dialog) => dialog.accept())
   await page.goto('/admin/users')
-  const promoteButton = page.locator('.admin-user-card button')
+  const promoteButton = page.locator('.admin-users-table tbody button')
   await expect(promoteButton).toBeVisible()
   await promoteButton.dispatchEvent('click')
   await promoteButton.dispatchEvent('click')

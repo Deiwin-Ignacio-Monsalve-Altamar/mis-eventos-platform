@@ -125,6 +125,7 @@ export default function AppHeader({ auth }) {
                   <span className={`user-role-badge user-role-${String(auth.user.role || '').toLowerCase()}`}>
                     {ROLE_LABELS[auth.user.role] || 'Usuario'} <small>{auth.user.role || ''}</small>
                   </span>
+                  <span className="user-session-status">Sesión activa</span>
                 </div>
                 {accountLinks.map((item) => (
                   <Link className="user-menu-item" key={item.to} onClick={() => setIsUserMenuOpen(false)} to={item.to}>{item.label}</Link>

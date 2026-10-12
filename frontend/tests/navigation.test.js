@@ -2,7 +2,7 @@
 
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { getNavigation } from '../src/navigation.js'
+import { getNavigation, getWorkspaceNavigation, getWorkspaceRole } from '../src/navigation.js'
 
 const validRoutes = new Set([
   '/events',
@@ -52,4 +52,25 @@ test('navigation destinations are implemented and are not duplicated for any rol
     assert.equal(new Set(destinations).size, destinations.length)
     assert.ok(destinations.every((destination) => validRoutes.has(destination)))
   }
+})
+
+test('workspace navigation contains only existing role-appropriate management routes', () => {
+  for (const role of ['ADMIN', 'ORGANIZER']) {
+    const groups = getWorkspaceNavigation(role)
+    const destinations = groups.flatMap(({ links }) => links.map(({ to }) => to))
+    assert.equal(new Set(destinations).size, destinations.length)
+    assert.ok(destinations.every((destination) => validRoutes.has(destination)))
+  }
+  assert.deepEqual(getWorkspaceNavigation('ATTENDEE'), [])
+})
+
+test('workspace shell is selected only for authenticated administrative and organizer routes', () => {
+  const authenticated = (role) => ({ status: 'authenticated', user: { role } })
+  assert.equal(getWorkspaceRole(authenticated('ADMIN'), '/admin/dashboard'), 'ADMIN')
+  assert.equal(getWorkspaceRole(authenticated('ADMIN'), '/events/42'), 'ADMIN')
+  assert.equal(getWorkspaceRole(authenticated('ORGANIZER'), '/my-events'), 'ORGANIZER')
+  assert.equal(getWorkspaceRole(authenticated('ORGANIZER'), '/events/42'), 'ORGANIZER')
+  assert.equal(getWorkspaceRole(authenticated('ATTENDEE'), '/profile'), null)
+  assert.equal(getWorkspaceRole({ status: 'loading' }, '/my-events'), null)
+  assert.equal(getWorkspaceRole({ status: 'anonymous' }, '/admin/users'), null)
 })
