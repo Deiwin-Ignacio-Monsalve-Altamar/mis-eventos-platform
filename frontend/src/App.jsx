@@ -4,6 +4,7 @@ import { Link, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { AppProvider } from './state/AppState.jsx'
 import useAppState from './state/useAppState.js'
 import AppHeader from './components/AppHeader.jsx'
+import WorkspaceLayout from './components/WorkspaceLayout.jsx'
 import AuthLayout from './components/AuthLayout.jsx'
 import CreateEventPage from './pages/CreateEventPage.jsx'
 import EventDetailsPage from './pages/EventDetailsPage.jsx'
@@ -19,6 +20,7 @@ import RequireAuthentication from './components/RequireAuthentication.jsx'
 import RequireRole from './components/RequireRole.jsx'
 import AdminUsersPage from './pages/AdminUsersPage.jsx'
 import { LoadingMessage } from './components/RequestFeedback.jsx'
+import { getWorkspaceRole } from './navigation.js'
 import './App.css'
 
 /** Render the application provider, shell, and page routes. */
@@ -37,28 +39,31 @@ function ApplicationRoutes() {
   const { pathname } = useLocation()
   const isAuthenticationPage = pathname === '/login' || pathname === '/register'
   const isEntryRoute = pathname === '/'
+  const workspaceRole = getWorkspaceRole(auth, pathname)
+  const routes = (
+    <Routes>
+      <Route element={<RoleHome auth={auth} />} path="/" />
+      <Route element={<EventListPage />} path="/events" />
+      <Route element={<CreateEventPage />} path="/events/new" />
+      <Route element={<EventDetailsPage />} path="/events/:eventId" />
+      <Route element={<LoginPage />} path="/login" />
+      <Route element={<RegisterPage />} path="/register" />
+      <Route element={<RequireAuthentication><ProfilePage /></RequireAuthentication>} path="/profile" />
+      <Route element={<RequireAuthentication><MyEventsPage /></RequireAuthentication>} path="/my-events" />
+      <Route element={<RequireAuthentication><MyRegistrationsPage /></RequireAuthentication>} path="/my-registrations" />
+      <Route element={<RequireAuthentication><RequireRole role="ADMIN"><AdminProfile user={auth.user} /></RequireRole></RequireAuthentication>} path="/admin/dashboard" />
+      <Route element={<RequireAuthentication><RequireRole role="ADMIN"><AdminUsersPage /></RequireRole></RequireAuthentication>} path="/admin/users" />
+      <Route element={<NotFoundPage />} path="*" />
+    </Routes>
+  )
 
   return (
     <div className={`app-shell${isAuthenticationPage || isEntryRoute ? ' app-shell-auth' : ''}`}>
-      {!isAuthenticationPage && !isEntryRoute && <AppHeader auth={auth} />}
-
-      <main className="page-container">
-        <Routes>
-          <Route element={<RoleHome auth={auth} />} path="/" />
-          <Route element={<EventListPage />} path="/events" />
-          <Route element={<CreateEventPage />} path="/events/new" />
-          <Route element={<EventDetailsPage />} path="/events/:eventId" />
-          <Route element={<LoginPage />} path="/login" />
-          <Route element={<RegisterPage />} path="/register" />
-          <Route element={<RequireAuthentication><ProfilePage /></RequireAuthentication>} path="/profile" />
-          <Route element={<RequireAuthentication><MyEventsPage /></RequireAuthentication>} path="/my-events" />
-          <Route element={<RequireAuthentication><MyRegistrationsPage /></RequireAuthentication>} path="/my-registrations" />
-          <Route element={<RequireAuthentication><RequireRole role="ADMIN"><AdminProfile user={auth.user} /></RequireRole></RequireAuthentication>} path="/admin/dashboard" />
-          <Route element={<RequireAuthentication><RequireRole role="ADMIN"><AdminUsersPage /></RequireRole></RequireAuthentication>} path="/admin/users" />
-          <Route element={<NotFoundPage />} path="*" />
-        </Routes>
-      </main>
-      {!isAuthenticationPage && !isEntryRoute && <SiteFooter auth={auth} />}
+      {!isAuthenticationPage && !isEntryRoute && !workspaceRole && <AppHeader auth={auth} />}
+      {workspaceRole
+        ? <WorkspaceLayout auth={auth} role={workspaceRole}>{routes}</WorkspaceLayout>
+        : <main className="page-container">{routes}</main>}
+      {!isAuthenticationPage && !isEntryRoute && !workspaceRole && <SiteFooter auth={auth} />}
     </div>
   )
 }

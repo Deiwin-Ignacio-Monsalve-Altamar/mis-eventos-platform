@@ -1,34 +1,20 @@
-/** Log out through shared authentication state and return to the public event list. */
+/** Log out through shared authentication state and return to the appropriate entry page. */
 
-import { useEffect, useRef, useState } from 'react'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { ErrorMessage } from './RequestFeedback.jsx'
 import useAppState from '../state/useAppState.js'
 
 /** Render an accessible logout action that preserves authentication on failure. */
 export default function LogoutButton() {
-  const { signOut } = useAppState()
+  const { state, signOut } = useAppState()
   const navigate = useNavigate()
-  const location = useLocation()
   const [error, setError] = useState(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const requestInProgress = useRef(false)
-  const pendingRedirect = useRef(null)
-
-  useEffect(() => {
-    if (pendingRedirect.current?.previousKey === location.key) return
-    const resolveRedirect = pendingRedirect.current?.resolve
-    if (resolveRedirect) {
-      pendingRedirect.current = null
-      resolveRedirect()
-    }
-  }, [location.key])
-
-  function redirectToEvents() {
-    return new Promise((resolve) => {
-      pendingRedirect.current = { previousKey: location.key, resolve }
-      navigate('/events', { replace: true })
-    })
+  function redirectAfterLogout() {
+    const destination = ['ORGANIZER', 'ADMIN'].includes(state.auth.user?.role) ? '/login' : '/events'
+    navigate(destination, { replace: true })
   }
 
   async function handleLogout() {
@@ -37,7 +23,7 @@ export default function LogoutButton() {
     setIsSubmitting(true)
     setError(null)
     try {
-      await signOut(redirectToEvents)
+      await signOut(redirectAfterLogout)
     } catch (requestError) {
       setError(requestError)
     } finally {

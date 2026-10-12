@@ -90,14 +90,21 @@ export default function AdminUsersPage() {
       {error && <><ErrorMessage error={error} />{error.status !== 401 && <button className="button button-secondary" onClick={() => { setRequestError(null); setRetry((value) => value + 1) }} type="button">Intentar de nuevo</button>}</>}
       {!result && !error && <LoadingMessage>Cargando usuarios…</LoadingMessage>}
       {result?.users.length === 0 && <EmptyMessage>{query ? 'No encontramos usuarios con esa búsqueda.' : 'Todavía no hay usuarios para mostrar.'}</EmptyMessage>}
-      {result?.users.length > 0 && <div aria-label="Usuarios registrados" className="admin-user-list">
-        {result.users.map((user) => (
-          <article className="admin-user-card" key={user.id}>
-            <div className="admin-user-identity"><h2>{user.first_name} {user.last_name}</h2><p>{user.email}</p></div>
-            <span className={`admin-role-badge admin-role-${user.role.toLowerCase()}`}>{ROLE_LABELS[user.role] || user.role}</span>
-            {user.role === 'ATTENDEE' && <button className="button button-secondary" disabled={busyUserId !== null} onClick={() => promote(user)} type="button">{busyUserId === user.id ? 'Promoviendo…' : 'Promover a organizador'}</button>}
-          </article>
-        ))}
+      {result?.users.length > 0 && <div className="admin-users-table-wrap">
+        <table className="admin-users-table">
+          <caption>Usuarios registrados y acciones disponibles según su rol</caption>
+          <thead><tr><th scope="col">Usuario</th><th scope="col">Correo electrónico</th><th scope="col">Rol</th><th scope="col">Acciones</th></tr></thead>
+          <tbody>{result.users.map((user) => (
+            <tr className="admin-user-row" key={user.id}>
+              <th data-label="Usuario" scope="row"><span className="admin-user-name">{user.first_name} {user.last_name}</span></th>
+              <td data-label="Correo electrónico">{user.email}</td>
+              <td data-label="Rol"><span className={`admin-role-badge admin-role-${user.role.toLowerCase()}`}>{ROLE_LABELS[user.role] || user.role}</span></td>
+              <td data-label="Acciones">{user.role === 'ATTENDEE'
+                ? <button className="button button-secondary" disabled={busyUserId !== null} onClick={() => promote(user)} type="button">{busyUserId === user.id ? 'Promoviendo…' : 'Promover a organizador'}</button>
+                : <span className="admin-no-action">Sin acciones disponibles</span>}</td>
+            </tr>
+          ))}</tbody>
+        </table>
       </div>}
       <PaginationControls disabled={!result || busyUserId !== null} itemLabel="usuarios" onPageChange={(nextPage) => { const next = new URLSearchParams(searchParams); next.set('page', String(nextPage)); setSearchParams(next) }} pagination={result?.pagination} />
     </section>

@@ -70,13 +70,19 @@ export default function AdminProfile({ user }) {
                   <p>Eventos creados e inscripciones activas asociadas.</p></div>
                 {dashboard.organizer_activity.length === 0
                   ? <EmptyMessage>Aún no hay organizadores registrados.</EmptyMessage>
-                  : <div className="organizer-activity-list">{dashboard.organizer_activity.map((organizer) => (
-                    <article className="organizer-activity-row" key={organizer.user_id}>
-                      <strong>{organizer.name}</strong>
-                      <span>{organizer.event_count} {organizer.event_count === 1 ? 'evento' : 'eventos'}</span>
-                      <span>{organizer.active_registrations} inscripciones activas</span>
-                    </article>
-                  ))}</div>}
+                  : <>
+                    <div className="profile-chart-grid organizer-activity-charts">
+                      <ProfileBarChart label="Eventos por organizador" title="Eventos creados por organizador" items={dashboard.organizer_activity.map((organizer) => ({ key: organizer.user_id, label: organizer.name, value: organizer.event_count }))} />
+                      <ProfileBarChart label="Inscripciones activas por organizador" title="Inscripciones activas por organizador" items={dashboard.organizer_activity.map((organizer) => ({ key: organizer.user_id, label: organizer.name, value: organizer.active_registrations }))} />
+                    </div>
+                    <div className="organizer-activity-list">{dashboard.organizer_activity.map((organizer) => (
+                      <article className="organizer-activity-row" key={organizer.user_id}>
+                        <strong>{organizer.name}</strong>
+                        <span>{organizer.event_count} {organizer.event_count === 1 ? 'evento' : 'eventos'}</span>
+                        <span>{organizer.active_registrations} inscripciones activas</span>
+                      </article>
+                    ))}</div>
+                  </>}
               </section>
             </>}
         </>}
