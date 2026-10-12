@@ -1,15 +1,15 @@
 # Mis Eventos
 
-Aplicación full stack para descubrir y administrar eventos, sesiones y registros. El repositorio contiene una API Flask, una interfaz React/Vite y PostgreSQL. Para desarrollo local se recomienda Docker Compose: Python, Poetry, Node y npm solo se necesitan en el host para `make setup`, pruebas y lint; al ejecutar la aplicación, Compose instala sus dependencias dentro de las imágenes.
+Full-stack application for discovering and managing events, sessions, and registrations. The repository contains a Flask API, a React/Vite interface, and PostgreSQL. Docker Compose is the recommended local development setup: Python, Poetry, Node, and npm are needed on the host for `make setup`, tests, and linting; Compose installs runtime dependencies in the application images.
 
-## Requisitos
+## Requirements
 
 - Git.
-- Docker Desktop con Compose v2 en macOS o Windows, o Docker Engine y el plugin Compose en Linux.
-- GNU Make y Python 3.12+ para los comandos del repositorio.
-- Para `make setup`, pruebas y lint: Poetry 2.x, Node.js 22+ y npm compatible con Node 22.
+- Docker Desktop with Compose v2 on macOS or Windows, or Docker Engine and the Compose plugin on Linux.
+- GNU Make and Python 3.12+ for repository commands.
+- Poetry 2.x, Node.js 22+, and npm compatible with Node 22 for `make setup`, tests, and linting.
 
-Comprueba las herramientas desde cualquier terminal:
+Check the tools from any terminal:
 
 ```sh
 git --version
@@ -23,73 +23,107 @@ node --version
 npm --version
 ```
 
-Instala Docker Desktop siguiendo las instrucciones oficiales para [macOS](https://docs.docker.com/desktop/setup/install/mac-install/), [Windows](https://docs.docker.com/desktop/setup/install/windows-install/) o [Linux](https://docs.docker.com/desktop/setup/install/linux/). En Linux también se puede instalar Docker Engine y el plugin de Compose desde la guía oficial de la distribución. Debe estar iniciado el motor de Docker antes de `make run`.
+Install Docker Desktop using the official instructions for [macOS](https://docs.docker.com/desktop/setup/install/mac-install/), [Windows](https://docs.docker.com/desktop/setup/install/windows-install/), or [Linux](https://docs.docker.com/desktop/setup/install/linux/). On Linux, you can also install Docker Engine and the Compose plugin by following the official instructions for your distribution. Start the Docker engine before running `make run`.
 
-La versión de Python está declarada como `>=3.12,<4.0` en `backend/pyproject.toml`; el backend usa Python 3.12 en su imagen. La imagen frontend usa Node 22 y npm instala desde `frontend/package-lock.json`. Usa Poetry 2.x para respetar el formato del lockfile.
+The Python version is declared as `>=3.12,<4.0` in `backend/pyproject.toml`; the backend image uses Python 3.12. The frontend image uses Node 22 and npm installs from `frontend/package-lock.json`. Use Poetry 2.x to match the lockfile format.
 
-## Clonar y arrancar por primera vez
+## Clone and start for the first time
 
-Ejecuta desde el directorio raíz del repositorio:
+Run these commands from the repository root:
 
 ```sh
-git clone <URL_DEL_REPOSITORIO> mis-eventos-platform
+git clone <REPOSITORY_URL> mis-eventos-platform
 cd mis-eventos-platform
 make setup
 make run
 ```
 
-`make setup` crea `.env` y `frontend/.env` únicamente cuando faltan, copiándolos de sus plantillas versionadas. Genera una clave JWT local criptográficamente segura (48 bytes aleatorios) si no existe o está vacía; la escribe solo en el `.env` ignorado por Git, no la imprime y no la vuelve a generar en ejecuciones posteriores. Un valor configurado de menos de 32 bytes causa un error claro y se conserva para que el usuario lo corrija. Los archivos `.env` que ya existen se conservan. Después instala el entorno Poetry con el lockfile y las dependencias npm con `npm ci`.
+`make setup` creates `.env` and `frontend/.env` from their versioned templates only if the files are missing. It generates a cryptographically secure local JWT key (48 random bytes) if the key is missing or empty, writes it only to the Git-ignored root `.env`, does not print it, and does not regenerate it on later runs. A configured key shorter than 32 bytes produces a clear error and is preserved for the developer to fix. Existing environment files are preserved. Setup then installs the Poetry environment from its lockfile and npm dependencies with `npm ci`.
 
-`make run` vuelve a comprobar/preparar los archivos locales y valida Docker/Compose antes de iniciar servicios. Construye o reutiliza las capas de las imágenes, inicia PostgreSQL, espera su healthcheck `pg_isready`, ejecuta `alembic upgrade head` en el servicio de migración de una sola ejecución, y solo entonces inicia backend y frontend. El proceso falla si la migración falla; no genera revisiones, no borra datos y conserva el volumen `postgres_data`. Se puede volver a ejecutar `make run` después de corregir un fallo.
+`make run` checks and prepares local files again and validates Docker/Compose before starting services. It builds or reuses image layers, starts PostgreSQL, waits for its `pg_isready` healthcheck, runs `alembic upgrade head` in a one-shot migration service, and only then starts the backend and frontend. Startup fails if migration fails; it does not generate migration revisions or delete data, and it preserves the `postgres_data` volume. You can rerun `make run` after correcting a failure.
 
-URLs locales (puertos del `docker-compose.yml`):
+Local URLs (ports from `docker-compose.yml`):
 
-- Interfaz: <http://localhost:5173>
-- API (estado): <http://localhost:5000/api/v1/health>
-- Preparación backend/base de datos: <http://localhost:5000/api/v1/ready>
+- Frontend: <http://localhost:5173>
+- API health: <http://localhost:5000/api/v1/health>
+- Backend/database readiness: <http://localhost:5000/api/v1/ready>
 - Swagger: <http://localhost:5000/apidocs/>
-- Especificación OpenAPI: <http://localhost:5000/apispec_1.json>
+- OpenAPI specification: <http://localhost:5000/apispec_1.json>
 
-## Configuración local y servicios externos
+## Local configuration and external services
 
-La plantilla raíz usa valores locales de desarrollo para PostgreSQL, tiempos de JWT y etiquetas de la aplicación. Compose proporciona las credenciales locales de PostgreSQL en `docker-compose.yml`; no son credenciales de producción. Nunca copies secretos de producción al entorno local. La clave JWT local se genera automáticamente y nunca debe compartirse ni agregarse al repositorio.
+The root template uses local development defaults for PostgreSQL, JWT lifetime, and application labels. Compose provides local PostgreSQL credentials in `docker-compose.yml`; these are not production credentials. Never copy production secrets into a local environment. The local JWT key is generated automatically and must never be shared or committed.
 
-Cloudinary es opcional: la configuración de almacenamiento se valida al solicitar la función de imágenes, no durante la creación de la aplicación. El resto de la app puede iniciar sin `CLOUDINARY_URL`; para subir imágenes de eventos, configura una URL de Cloudinary válida localmente en `.env`. No hay credenciales externas ficticias en la plantilla. Si se agrega otro proveedor externo, sus credenciales deben configurarse solo para la funcionalidad que las requiere; las pruebas unitarias usan mocks y no necesitan cuentas reales.
+Cloudinary is optional: its storage configuration is validated when the image feature is requested, not when the application is created. The rest of the app can start without `CLOUDINARY_URL`; to upload event images, configure a valid Cloudinary URL locally in `.env`. The template contains no fake external credentials. Any other provider credentials should be configured only for the feature that requires them; unit tests use mocks and do not need real accounts.
 
-`frontend/.env` solo contiene valores públicos del navegador y el proxy local. No coloques secretos en variables `VITE_*`.
+`frontend/.env` contains only browser-visible values and the local proxy configuration. Do not put secrets in `VITE_*` variables.
 
-## Comandos diarios
+## Creating an Administrator User
 
-Desde la raíz del repositorio:
+The supported mechanism initializes the **first** administrator by promoting an existing account. Normal registration creates an `ATTENDEE`; migrations do not create administrators. The bootstrap command refuses to run if an administrator already exists, and there is no automated recovery command if all administrator accounts are lost.
+
+### Prerequisites
+
+From the repository root, complete `make setup` and `make run`. This starts PostgreSQL, applies migrations, and provides the backend's generated local `JWT_SECRET_KEY`. Keep the backend connected to the intended local database. In production, use the deployment's approved operational access and its production environment; never point a local setup at production or copy production secrets into `.env`.
+
+### Register the account
+
+Open <http://localhost:5173/register> and register the account that will become the first administrator. Registration requires an email, password, first name, and last name. The password must be 8–128 characters. Use a unique account email and a strong password; do not use a default or example password.
+
+If the account already exists, skip registration and use its email. The CLI does not create accounts and does not accept or reset passwords.
+
+### Initialize the first administrator
+
+Run from the repository root after the account is registered and while the local Compose backend is running:
 
 ```sh
-make status       # estado de Compose y endpoints
-make logs         # últimas 100 líneas de logs
-make migrate      # aplicar migraciones pendientes en la base local ya iniciada
-make restart      # reiniciar servicios existentes
-make stop         # detener y retirar contenedores; conserva los datos
-make help         # lista de targets disponibles
+docker compose exec backend poetry run flask --app app.main:create_app bootstrap-admin admin@example.test
 ```
 
-`make run` vuelve a aplicar `upgrade head` de forma idempotente al iniciar; `make migrate` es útil cuando se necesita aplicar una migración manualmente en una pila activa. Para trabajar directamente en el backend, desde la raíz se puede usar `cd backend && poetry run alembic upgrade head`; el `.env` raíz se usa automáticamente por Compose, pero Alembic local toma las variables exportadas por el shell o el `DATABASE_URL` por defecto de PostgreSQL en localhost. No ejecutes `revision --autogenerate` como parte del arranque: resérvalo para cambios deliberados de esquema y revisa la migración antes de aplicarla.
+Replace `admin@example.test` with the registered account's email. The command checks that the account exists and no administrator has already been initialized, then promotes it in a database transaction. On success it prints `Administrator initialized for account ID <id>.`; the message contains no credentials. If the email is not registered, or an administrator already exists, it reports an error and makes no promotion. Do not rerun it after successful initialization.
 
-Para detener el entorno sin perder datos:
+### Sign in and verify access
+
+Sign in at <http://localhost:5173/login> with that account's email and password. Verify the profile or authenticated session reports the `ADMIN` role, then open the administrator dashboard at <http://localhost:5173/admin/dashboard>. The corresponding protected API is `GET /api/v1/admin/dashboard`; administrator-only API routes reject accounts without the `ADMIN` role.
+
+### Security and environment differences
+
+Enter the password only in the registration and login forms. Do not put it in command arguments, shell history, `.env`, or logs. The bootstrap command takes only the account email and prints only the account ID. Never share environment files or logs containing credentials.
+
+For local development, use the generated local JWT key and local Compose database. For production, run the same supported Flask CLI command only through an authorized operational session in the production deployment, after confirming that its configured database is the intended production database and that no administrator exists. Follow the production access and change-control process; do not run `docker compose exec` from this local development setup against production. Keep production credentials and signing keys in the deployment's secret-management system, not in the repository or a developer's `.env`.
+
+## Daily commands
+
+Run these commands from the repository root:
+
+```sh
+make status       # Compose and endpoint status
+make logs         # Latest 100 lines of logs
+make migrate      # Apply pending migrations to the already running local database
+make restart      # Restart existing services
+make stop         # Stop and remove containers; keep data
+make help         # List available targets
+```
+
+`make run` applies `upgrade head` idempotently at startup; `make migrate` is useful when you need to apply pending migrations to an active stack. To work directly in the backend, run `cd backend && poetry run alembic upgrade head` from the repository root. Compose reads the root `.env` automatically, but local Alembic uses variables exported by the shell or the default PostgreSQL URL pointing to localhost. Do not run `revision --autogenerate` during startup; reserve it for deliberate schema changes and review the migration before applying it.
+
+To stop the environment without losing data:
 
 ```sh
 make stop
 ```
 
-El volumen nombrado permanece. Restablecer deliberadamente la base de datos es destructivo y separado del flujo normal. Solo después de confirmar que se desea borrar todos los datos locales, ejecuta desde la raíz:
+The named volume remains. Deliberately resetting the database is destructive and separate from the normal workflow. Only after confirming that you want to delete all local data, run this from the repository root:
 
 ```sh
 docker compose down -v
 ```
 
-No uses ese comando para solucionar errores rutinarios de arranque.
+Do not use that command to troubleshoot routine startup failures.
 
-## Pruebas y calidad
+## Tests and quality
 
-Desde la raíz, `make setup` instala las dependencias locales necesarias. Las pruebas unitarias no necesitan Docker, PostgreSQL ni credenciales externas:
+From the repository root, `make setup` installs the local dependencies needed for tests. Unit tests do not require Docker, PostgreSQL, or external credentials:
 
 ```sh
 make test-backend
@@ -98,31 +132,31 @@ make test
 make lint
 ```
 
-La compilación frontend también puede ejecutarse en `frontend/`:
+You can also build the frontend from `frontend/`:
 
 ```sh
 cd frontend
 npm run build
 ```
 
-Pruebas Playwright E2E: instala Chromium una vez con `cd frontend && npx playwright install chromium`, luego ejecuta `npm run test:e2e` desde `frontend/` o `make test-e2e` desde la raíz. Las pruebas de integración del backend, separadas de la suite unitaria, se ejecutan desde la raíz con `cd backend && poetry run pytest tests/integration -m integration`; sus dependencias de infraestructura se simulan y no requieren una base externa.
+For Playwright E2E tests, install Chromium once with `cd frontend && npx playwright install chromium`, then run `npm run test:e2e` from `frontend/` or `make test-e2e` from the repository root. The backend integration tests are separate from the unit suite and run from the repository root with `cd backend && poetry run pytest tests/integration -m integration`; their infrastructure dependencies are mocked, so they do not require an external database.
 
-## Problemas comunes
+## Common problems
 
-- **Falta `JWT_SECRET_KEY`:** ejecuta `make setup` o `make run`; ambos preparan el `.env` y generan una clave local. Si el valor existente tiene menos de 32 bytes, corrígelo localmente. No compartas el `.env` ni logs que contengan variables.
-- **Alembic no encontrado:** `make setup` instala dependencias del grupo principal de Poetry, donde Alembic está declarado. Para ejecución manual, entra a `backend/` y usa `poetry run alembic ...`.
-- **Docker no disponible:** inicia Docker Desktop o el servicio Docker; comprueba `docker info` y `docker compose version`.
-- **Puerto ocupado:** libera 5432 (PostgreSQL), 5000 (API) o 5173 (Vite), o cambia deliberadamente el puerto publicado en `docker-compose.yml`; luego vuelve a correr `make run`.
-- **Base de datos no disponible:** `make status` y `make logs` muestran estado y diagnóstico. Compose espera el healthcheck real de PostgreSQL antes de migrar.
-- **Variables faltantes o inválidas:** `make run` valida `.env` antes de iniciar Compose. Solo las opciones locales se generan automáticamente; no se inventan credenciales para servicios externos.
-- **Dependencias incompatibles:** usa Python 3.12+, Poetry 2.x y Node 22+, y vuelve a ejecutar `make setup` para sincronizar con `poetry.lock` y `package-lock.json`.
-- **Migración fallida:** `make run` termina con error y no anuncia éxito. Consulta `make logs`, corrige la causa y vuelve a ejecutar `make run`; no borres el volumen como primer paso. Las migraciones se aplican exclusivamente a la base local configurada por Compose.
+- **Missing `JWT_SECRET_KEY`:** run `make setup` or `make run`; both prepare `.env` and generate a local key. If an existing value is shorter than 32 bytes, correct it locally. Do not share `.env` or logs containing variables.
+- **Alembic not found:** `make setup` installs the main Poetry dependencies, which include Alembic. For manual execution, enter `backend/` and use `poetry run alembic ...`.
+- **Docker unavailable:** start Docker Desktop or the Docker service; check `docker info` and `docker compose version`.
+- **Port already in use:** free port 5432 (PostgreSQL), 5000 (API), or 5173 (Vite), or deliberately change the published port in `docker-compose.yml`; then rerun `make run`.
+- **Database unavailable:** `make status` and `make logs` provide status and diagnostics. Compose waits for PostgreSQL's actual healthcheck before migrating.
+- **Missing or invalid variables:** `make run` validates `.env` before starting Compose. Only local defaults are generated automatically; external-service credentials are not invented.
+- **Incompatible dependencies:** use Python 3.12+, Poetry 2.x, and Node 22+, then rerun `make setup` to synchronize with `poetry.lock` and `package-lock.json`.
+- **Migration failed:** `make run` exits with an error and does not report success. Check `make logs`, fix the cause, and rerun `make run`; do not delete the volume as a first step. Migrations apply only to the local database configured for Compose.
 
-## Arquitectura y documentación
+## Architecture and documentation
 
-- `backend/`: API Flask, aplicación/dominio, persistencia SQLAlchemy, Alembic y pruebas pytest.
-- `frontend/`: React, React Router, Vite, pruebas Node y Playwright.
-- `docker-compose.yml`: PostgreSQL, migración puntual, API y frontend.
-- `scripts/dev.py`: automatización de desarrollo y reportes de pruebas.
+- `backend/`: Flask API, application/domain logic, SQLAlchemy persistence, Alembic, and pytest tests.
+- `frontend/`: React, React Router, Vite, Node tests, and Playwright.
+- `docker-compose.yml`: PostgreSQL, one-shot migration, API, and frontend.
+- `scripts/dev.py`: development automation and test reports.
 
-Consulta también [guía de despliegue](docs/deployment.md), [documentación backend](backend/README.md) y [documentación frontend](frontend/README.md).
+Also see the [deployment guide](docs/deployment.md), [backend documentation](backend/README.md), and [frontend documentation](frontend/README.md).
