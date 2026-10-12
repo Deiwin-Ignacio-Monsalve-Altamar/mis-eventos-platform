@@ -8,7 +8,7 @@ import { EmptyMessage, LoadingMessage } from './RequestFeedback.jsx'
 import { formatEventDate, getSessionAvailability, sortSessions } from '../utils/eventPresentation.js'
 
 /** Render session cards in chronological order with available backend data. */
-export default function SessionList({ eventId, sessions, status, error, onRetry, refreshKey = 0, canManage = false, onEdit, onDelete, deletingId = null, busy = false }) {
+export default function SessionList({ eventId, sessions, status, error, onRetry, refreshKey = 0, canManage = false, onEdit, onDelete, deletingId = null, busy = false, authStatus = 'anonymous', eventRegistered = false, sessionRegistrations = [], sessionRegistrationStatus = 'idle', onSessionRegistration, onRetrySessionRegistrations }) {
   if (status === 'loading' || status === 'idle') {
     return <LoadingMessage>Cargando sesiones…</LoadingMessage>
   }
@@ -39,6 +39,12 @@ export default function SessionList({ eventId, sessions, status, error, onRetry,
             onDelete={onDelete}
             onEdit={onEdit}
             session={session}
+            authStatus={authStatus}
+            eventRegistered={eventRegistered}
+            sessionRegistration={sessionRegistrations.find((item) => item.session.id === session.id)}
+            sessionRegistrationStatus={sessionRegistrationStatus}
+            onSessionRegistration={onSessionRegistration}
+            onRetrySessionRegistrations={onRetrySessionRegistrations}
           />
       ))}
     </ol>
@@ -46,7 +52,7 @@ export default function SessionList({ eventId, sessions, status, error, onRetry,
 }
 
 /** Load one session's occupancy and render its optional organizer controls. */
-function SessionItem({ eventId, index, session, canManage, onEdit, onDelete, deleting, busy }) {
+function SessionItem({ eventId, index, session, canManage, onEdit, onDelete, deleting, busy, authStatus, eventRegistered, sessionRegistration, sessionRegistrationStatus, onSessionRegistration, onRetrySessionRegistrations }) {
   const [occupancy, setOccupancy] = useState(null)
   const [occupancyUnavailable, setOccupancyUnavailable] = useState(false)
 
@@ -80,6 +86,28 @@ function SessionItem({ eventId, index, session, canManage, onEdit, onDelete, del
           sessionCapacity={session.capacity}
           unavailable={occupancyUnavailable}
         />
+        {authStatus === 'authenticated' && eventRegistered && (
+          <div className="session-registration-action">
+            {sessionRegistrationStatus === 'loading'
+              ? <p className="event-neutral-note" role="status">Consultando tu inscripción…</p>
+              : <>
+                  <button
+                    className="button button-secondary"
+                    disabled={sessionRegistrationStatus === 'error' || sessionRegistrationStatus === 'saving' || busy}
+                    onClick={() => onSessionRegistration(session.id, sessionRegistration?.status === 'active')}
+                    type="button"
+                  >
+                    {sessionRegistrationStatus === 'saving'
+                      ? 'Actualizando…'
+                      : sessionRegistration?.status === 'active'
+                        ? 'Cancelar inscripción a la sesión'
+                        : 'Inscribirme a esta sesión'}
+                  </button>
+                  {sessionRegistrationStatus === 'error' && <div><p className="feedback feedback-error" role="alert">No pudimos confirmar tu inscripción. Verifica tu inscripción activa al evento y la disponibilidad antes de volver a intentar.</p><button className="button button-secondary" onClick={onRetrySessionRegistrations} type="button">Volver a consultar</button></div>}
+                  {sessionRegistrationStatus === 'saved' && <p className="feedback feedback-success" role="status">Inscripción actualizada.</p>}
+                </>}
+          </div>
+        )}
         {canManage && (
           <div aria-label={`Administrar ${session.title}`} className="button-row session-management-actions">
             <button className="button button-secondary" disabled={busy} onClick={() => onEdit(session)} type="button">Editar sesión</button>

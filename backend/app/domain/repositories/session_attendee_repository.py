@@ -3,6 +3,7 @@
 from typing import Protocol
 
 from app.domain.entities.session_attendee import (
+    EventRosterEntry,
     SessionAttendee,
     SessionOccupancy,
     SessionRegistrationDetails,
@@ -20,6 +21,9 @@ class SessionAttendeeRepository(Protocol):
 
     def list_attendees(self, event_id: int, session_id: int) -> list[SessionAttendee]:
         """List active attendees for one event-scoped session."""
+
+    def list_event_attendees(self, event_id: int) -> list[EventRosterEntry]:
+        """List active event enrollments and their session enrollment states."""
 
     def list_registrations_for_user(
         self, user_id: int, page: int, page_size: int

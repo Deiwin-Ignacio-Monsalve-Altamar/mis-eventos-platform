@@ -173,6 +173,34 @@ can request `GET /api/v1/events/recommendations/me`, which returns up to eight
 published future events with confirmed free seats and excludes events where
 the caller already has an active registration.
 
+The frontend exposes the public catalog at `/events`, personal activity at
+`/profile` and `/my-registrations`, organizer event management at `/my-events`,
+and administrator management at `/admin/dashboard` and `/admin/users`.
+Organizers can inspect an event's active roster through
+`GET /api/v1/events/{event_id}/attendees`. It returns attendee identity,
+registration time, and optional session enrollment status in one response.
+The backend checks the organizer's event ownership; administrators retain the
+existing event-management override.
+
+Session enrollment requires an active registration for the parent event. Users
+enroll through `POST /api/v1/events/{event_id}/sessions/{session_id}/attendees`
+and cancel their own enrollment through
+`DELETE /api/v1/events/{event_id}/sessions/{session_id}/attendees/me`. The
+backend checks eligibility, duplicate enrollment, and capacity transactionally.
+The existing event-level registration and cancellation flow remains separate
+and unchanged.
+
+To try the workflow locally, start the documented Compose environment with
+`make run`, sign in as an organizer, open one of your published events from
+`/my-events`, and choose **Consultar asistentes**. An attendee can open a
+published event from `/events`, register for the event first, then enroll in or
+cancel individual sessions from its detail page. Focused API and authorization
+tests run with this command from `backend/`:
+
+```sh
+poetry run pytest tests/unit/api/sessions/test_routes.py tests/unit/application/sessions/test_attendees.py tests/unit/infrastructure/repositories/test_sqlalchemy_session_attendee_repository.py
+```
+
 #### Initialize the first administrator
 
 Apply migrations and create/register the intended account first. Then run the

@@ -4,6 +4,7 @@ from app.application.dto.session_registration_page import SessionRegistrationPag
 from app.application.pagination import positive_integer
 from app.core.exceptions import AuthorizationError, NotFoundError
 from app.domain.entities.session_attendee import (
+    EventRosterEntry,
     SessionAttendee,
     SessionOccupancy,
 )
@@ -40,6 +41,15 @@ class SessionAttendeeService:
                 "Only the event creator can view session attendees."
             )
         return self._repository.list_attendees(event_id, session_id)
+
+    def list_event_attendees(
+        self, event_id: int, requester_id: int, is_admin: bool = False
+    ) -> list[EventRosterEntry]:
+        """Allow only the event creator or administrator to view its roster."""
+        creator_id = self._event_creator(event_id)
+        if creator_id != requester_id and not is_admin:
+            raise AuthorizationError("Only the event creator can view attendees.")
+        return self._repository.list_event_attendees(event_id)
 
     def get_occupancy(self, event_id: int, session_id: int) -> SessionOccupancy:
         """Return session-specific capacity, occupancy, and available seats."""

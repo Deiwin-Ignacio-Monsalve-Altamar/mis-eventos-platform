@@ -2,8 +2,8 @@
 
 import { useEffect, useReducer, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
-import { createEventSession, deleteEventSession, getEventCapacity, updateEventSession } from '../api/events.js'
-import { cancelMyEventRegistration, findMyEventRegistration, registerForEvent } from '../api/registrations.js'
+import { createEventSession, deleteEventSession, getEventCapacity, listEventAttendees, updateEventSession } from '../api/events.js'
+import { cancelMyEventRegistration, cancelMySessionRegistration, findMyEventRegistration, listMySessionRegistrationsForEvent, registerForEvent, registerForSession } from '../api/registrations.js'
 import EventForm from '../components/EventForm.jsx'
 import EventCover from '../components/EventCover.jsx'
 import EventImageGallery from '../components/EventImageGallery.jsx'
@@ -35,10 +35,14 @@ export default function EventDetailsPage() {
   const [availabilityRevision, setAvailabilityRevision] = useState(0)
   const [registrationRevision, setRegistrationRevision] = useState(0)
   const [capacityQuery, setCapacityQuery] = useState(null)
+  const [sessionRegistrations, setSessionRegistrations] = useState({ status: 'idle', registrations: [] })
+  const [sessionRoster, setSessionRoster] = useState({ status: 'idle', attendees: [], error: null })
+  const [showSessionRoster, setShowSessionRoster] = useState(false)
   const [sessionEditor, setSessionEditor] = useState(undefined)
   const [sessionAction, setSessionAction] = useState({ status: 'idle', error: null, deletingId: null })
   const registrationRequest = useRef(false)
   const sessionRequest = useRef(false)
+  const sessionRegistrationRequests = useRef(new Set())
   const eventMutationRequest = useRef(false)
   const ownerRequestKey = `${auth.status}:${auth.user?.id ?? ''}:${event?.id ?? ''}`
   const ownerAccess = ownerResult?.key === ownerRequestKey ? ownerResult.status : 'checking'
@@ -52,6 +56,9 @@ export default function EventDetailsPage() {
   const registration = registrationState.eventKey === currentRegistrationKey
     ? registrationState
     : initialRegistrationState
+  const currentSessionRegistrations = sessionRegistrations.eventId === event?.id
+    ? sessionRegistrations
+    : { status: 'idle', registrations: [] }
 
   useEffect(() => {
     if (!/^\d+$/.test(eventId || '') || Number(eventId) < 1) return
@@ -107,6 +114,22 @@ export default function EventDetailsPage() {
       })
     return () => { active = false }
   }, [auth.status, auth.user?.id, currentRegistrationKey, event?.id, registrationRevision])
+
+  useEffect(() => {
+    let active = true
+    if (!event?.id || auth.status !== 'authenticated' || !registration.registered) return undefined
+    Promise.resolve().then(() => {
+      if (active) setSessionRegistrations({ eventId: event.id, status: 'loading', registrations: [] })
+      return listMySessionRegistrationsForEvent(event.id)
+    })
+      .then((registrations) => {
+        if (active) setSessionRegistrations({ eventId: event.id, status: 'success', registrations })
+      })
+      .catch(() => {
+        if (active) setSessionRegistrations({ eventId: event.id, status: 'error', registrations: [] })
+      })
+    return () => { active = false }
+  }, [auth.status, auth.user?.id, event?.id, registration.registered, registrationRevision])
 
   if (!/^\d+$/.test(eventId || '') || Number(eventId) < 1) {
     return <EventUnavailable onBack={() => navigate('/events')} />
@@ -232,6 +255,49 @@ export default function EventDetailsPage() {
     }
   }
 
+  async function handleSessionRegistration(sessionId, cancel) {
+    if (sessionRegistrationRequests.current.has(sessionId) || !registration.registered) return
+    sessionRegistrationRequests.current.add(sessionId)
+    setSessionRegistrations((current) => ({ ...current, eventId: event.id, status: 'saving' }))
+    try {
+      if (cancel) await cancelMySessionRegistration(event.id, sessionId)
+      else await registerForSession(event.id, sessionId)
+      setSessionRegistrations((current) => {
+        const registrations = current.registrations.filter((item) => item.session.id !== sessionId)
+        registrations.push({
+          event: { id: event.id },
+          session: { id: sessionId },
+          status: cancel ? 'cancelled' : 'active',
+        })
+        return { eventId: event.id, status: 'saved', registrations }
+      })
+    } catch {
+      setSessionRegistrations((current) => ({ ...current, eventId: event.id, status: 'error' }))
+    } finally {
+      sessionRegistrationRequests.current.delete(sessionId)
+    }
+  }
+
+  async function retrySessionRegistrationLookup() {
+    setSessionRegistrations({ eventId: event.id, status: 'loading', registrations: [] })
+    try {
+      const registrations = await listMySessionRegistrationsForEvent(event.id)
+      setSessionRegistrations({ eventId: event.id, status: 'success', registrations })
+    } catch {
+      setSessionRegistrations({ eventId: event.id, status: 'error', registrations: [] })
+    }
+  }
+
+  async function loadSessionRoster() {
+    setSessionRoster({ status: 'loading', attendees: [], error: null })
+    try {
+      const attendees = await listEventAttendees(event.id)
+      setSessionRoster({ status: 'success', attendees, error: null })
+    } catch (rosterError) {
+      setSessionRoster({ status: 'error', attendees: [], error: rosterError })
+    }
+  }
+
   async function handleSaveSession(values) {
     if (sessionRequest.current) return
     sessionRequest.current = true
@@ -330,6 +396,12 @@ export default function EventDetailsPage() {
                     >Cancelar evento</button>
                   )}
                 </div>
+              )}
+              {!isEditing && event.status === 'published' && (
+                <button className="button button-secondary" onClick={() => {
+                  setShowSessionRoster(true)
+                  if (sessionRoster.status === 'idle') loadSessionRoster()
+                }} type="button">Consultar asistentes</button>
               )}
               {eventAction.status === 'saved' && <p className="feedback feedback-success" role="status">Los cambios quedaron guardados.</p>}
               {eventAction.status === 'error' && !isEditing && <ErrorMessage error={eventAction.error} />}
@@ -437,9 +509,28 @@ export default function EventDetailsPage() {
               sessions={sessions}
               status={sessionsStatus}
               refreshKey={availabilityRevision}
+              authStatus={auth.status}
+              eventRegistered={registration.registered}
+              sessionRegistrations={currentSessionRegistrations.registrations}
+              sessionRegistrationStatus={currentSessionRegistrations.status}
+              onSessionRegistration={handleSessionRegistration}
+              onRetrySessionRegistrations={retrySessionRegistrationLookup}
             />
           : <p className="event-neutral-note" role="status">La agenda se podrá consultar y administrar cuando el evento esté publicado. Los cambios de información no modifican las sesiones guardadas.</p>}
       </section>
+      {isOwner && showSessionRoster && event.status === 'published' && (
+        <section aria-labelledby="event-attendees-heading" className="event-attendees-section">
+          <header><div><p className="eyebrow">Inscripciones</p><h2 id="event-attendees-heading">Asistentes del evento</h2></div>
+            <button className="button button-secondary" onClick={() => setShowSessionRoster(false)} type="button">Cerrar</button>
+          </header>
+          {sessionRoster.status === 'loading' && <LoadingMessage>Cargando asistentes…</LoadingMessage>}
+          {sessionRoster.status === 'error' && <div><EventErrorMessage error={sessionRoster.error} /><button className="button button-secondary" onClick={loadSessionRoster} type="button">Volver a intentar</button></div>}
+          {sessionRoster.status === 'success' && sessionRoster.attendees.length === 0 && <p>No hay inscripciones activas para este evento.</p>}
+          {sessionRoster.status === 'success' && sessionRoster.attendees.length > 0 && <div className="table-scroll"><table><thead><tr><th>Asistente</th><th>Correo</th><th>Sesión</th><th>Estado</th></tr></thead><tbody>
+            {sessionRoster.attendees.map((attendee, index) => <tr key={`${attendee.user_id}:${attendee.session_id ?? 'event'}:${index}`}><td>{attendee.first_name} {attendee.last_name}</td><td>{attendee.email}</td><td>{attendee.session_title || 'Inscripción al evento'}</td><td>{attendee.session_status === 'active' ? 'Inscrito a sesión' : attendee.session_status === 'cancelled' ? 'Sesión cancelada' : 'Inscrito al evento'}</td></tr>)}
+          </tbody></table></div>}
+        </section>
+      )}
     </div>
   )
 }

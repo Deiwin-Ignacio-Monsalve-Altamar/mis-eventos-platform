@@ -168,6 +168,17 @@ test('session editing controls and form are available only when management is en
       onEdit: () => {},
       onDelete: () => {},
     }))
+    const enrolledAttendeeView = renderToString(createElement(SessionList, {
+      canManage: false,
+      eventId: event.id,
+      sessions: [session],
+      status: 'success',
+      authStatus: 'authenticated',
+      eventRegistered: true,
+      sessionRegistrations: [{ session: { id: session.id }, status: 'active' }],
+      sessionRegistrationStatus: 'success',
+      onSessionRegistration: () => {},
+    }))
     const form = renderToString(createElement(SessionForm, {
       event,
       session,
@@ -180,6 +191,8 @@ test('session editing controls and form are available only when management is en
     assert.match(editable, /Closing discussion/)
     assert.equal((editable.match(/class="session-item"/g) || []).length, 2)
     assert.doesNotMatch(publicView, /Editar sesión/)
+    assert.doesNotMatch(publicView, /Inscribirme a esta sesión/)
+    assert.match(enrolledAttendeeView, /Cancelar inscripción a la sesión/)
     assert.doesNotMatch(publicView, /Eliminar sesión/)
     assert.match(form, /value="Opening talk"/)
     assert.match(form, /Guardar sesión/)

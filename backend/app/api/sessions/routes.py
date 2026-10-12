@@ -197,6 +197,40 @@ def list_session_attendees(event_id: int, session_id: int):
     ), HTTPStatus.OK
 
 
+@session_bp.get("/events/<int:event_id>/attendees")
+@token_required
+@roles_required(UserRole.ORGANIZER, UserRole.ADMIN)
+def list_event_attendees(event_id: int):
+    """List one event's active registrants and their optional session states."""
+    try:
+        attendees = get_session_attendee_service().list_event_attendees(
+            event_id,
+            g.current_user.id,
+            is_admin=g.current_user.role is UserRole.ADMIN,
+        )
+    except AuthorizationError as error:
+        return error_response("forbidden", str(error), HTTPStatus.FORBIDDEN)
+    except NotFoundError as error:
+        return error_response("not_found", str(error), HTTPStatus.NOT_FOUND)
+    return jsonify(
+        {
+            "attendees": [
+                {
+                    "user_id": item.user_id,
+                    "first_name": item.first_name,
+                    "last_name": item.last_name,
+                    "email": item.email,
+                    "registered_at": item.registered_at.isoformat(),
+                    "session_id": item.session_id,
+                    "session_title": item.session_title,
+                    "session_status": item.session_status,
+                }
+                for item in attendees
+            ]
+        }
+    ), HTTPStatus.OK
+
+
 @session_bp.get("/events/<int:event_id>/sessions/<int:session_id>/capacity")
 def get_session_occupancy(event_id: int, session_id: int):
     """Return session capacity and active session enrollment counts."""
