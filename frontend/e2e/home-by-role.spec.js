@@ -55,15 +55,39 @@ async function mockApi(page, { role = null, requests = [] } = {}) {
   })
 }
 
-test('anonymous root shows the existing login and public routes remain directly accessible', async ({ page }) => {
-  await mockApi(page)
+test('fresh context without a cookie receives 401 and stays on login instead of entering organizer events', async ({ page }) => {
+  let sessionRequest
+  await page.route('**/api/v1/**', async (route) => {
+    const request = route.request()
+    const path = new URL(request.url()).pathname.replace('/api/v1', '')
+    if (path === '/auth/me') {
+      sessionRequest = request
+      await route.fulfill({ status: 401, json: { error: { code: 'authentication_required' } } })
+      return
+    }
+    if (path === '/events') {
+      await route.fulfill({ json: { events: [], pagination: { page: 1, page_size: 9, total: 0, total_pages: 0 } } })
+      return
+    }
+    await route.fulfill({ status: 404, json: { error: { code: 'not_found' } } })
+  })
   await page.goto('/')
 
   await expect(page).toHaveURL('/')
   await expect(page.getByRole('heading', { name: '¡Qué bueno verte!' })).toBeVisible()
   await expect(page.getByLabel('Correo electrónico')).toBeVisible()
   await expect(page.getByRole('link', { name: 'Crear una cuenta' })).toHaveAttribute('href', '/register')
+  expect(sessionRequest.headers().cookie).toBeUndefined()
 
+  await expect(page).not.toHaveURL('/my-events')
+
+  await page.goto('/events')
+  await expect(page.getByRole('heading', { name: 'Planes con otra energía' })).toBeVisible()
+  await expect(page).toHaveURL('/events')
+})
+
+test('anonymous root shows login and public routes remain directly accessible', async ({ page }) => {
+  await mockApi(page)
   await page.goto('/events')
   await expect(page.getByRole('heading', { name: 'Planes con otra energía' })).toBeVisible()
   await expect(page).toHaveURL('/events')

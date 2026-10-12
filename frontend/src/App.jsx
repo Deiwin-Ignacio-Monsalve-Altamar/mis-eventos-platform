@@ -75,17 +75,17 @@ function RoleHome({ auth }) {
     )
   }
 
-  if (auth.status !== 'authenticated') {
-    return <LoginPage defaultDestination="/" />
-  }
-
   const destinations = {
     ATTENDEE: '/events',
     ORGANIZER: '/my-events',
     ADMIN: '/admin/dashboard',
   }
-  const destination = destinations[auth.user?.role]
-  return destination ? <Navigate replace to={destination} /> : <NotFoundPage />
+  const destination = auth.user?.role ? destinations[auth.user.role] : null
+
+  if (auth.status !== 'authenticated' || !destination) {
+    return <LoginPage defaultDestination="/" />
+  }
+  return <Navigate replace to={destination} />
 }
 
 /** Explain when the requested location does not match a supported route. */
